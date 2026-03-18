@@ -1,0 +1,30 @@
+name: PuckTracker
+options:
+  bundleIdPrefix: com.puckrunner
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "15.0"
+  minimumXcodeGenVersion: "2.38.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1"  # iPhone only
+    INFOPLIST_FILE: Info.plist
+
+targets:
+  PuckTracker:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+      - Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.puckrunner.PuckTracker
+        DEVELOPMENT_TEAM: ""
+        GENERATE_INFOPLIST_FILE: false
+        INFOPLIST_FILE: Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Info.plist

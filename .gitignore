@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+build/
+.build/
+*.swp
+*.swo
