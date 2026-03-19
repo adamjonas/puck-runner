@@ -64,7 +64,7 @@ export class GameState {
   // Speed (increases over time)
   speed = 1.0 // multiplier, starts at 1.0
   static readonly BASE_SCROLL_SPEED = 0.15 // pixels per ms
-  static readonly SPEED_RAMP_RATE = 0.02 // speed increase per 10 seconds
+  static readonly SPEED_RAMP_RATE = 0.167 // speed increase per 10 seconds (~2x at 60s)
 
   // Deke
   dekeActive = false
