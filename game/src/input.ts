@@ -202,7 +202,7 @@ export class InputManager {
         }
       }
 
-      if (this.state.screen !== 'playing') return
+      if (this.state.screen !== 'playing' && this.state.screen !== 'tutorial') return
 
       switch (e.key) {
         case 'ArrowLeft':
@@ -220,6 +220,22 @@ export class InputManager {
         case 'ArrowDown':
           e.preventDefault()
           this.state.activateDeke(performance.now())
+          break
+        case 's':
+        case 'S':
+          // Simulate stickhandling toggle (for testing without tracker)
+          e.preventDefault()
+          this.state.stickhandlingActive = !this.state.stickhandlingActive
+          if (this.state.stickhandlingActive) {
+            this.state.stickhandlingFrequency = 3.0
+            if (this.state.stickhandlingStreakStart === 0) {
+              this.state.stickhandlingStreakStart = performance.now()
+            }
+          } else {
+            this.state.stickhandlingFrequency = 0
+            this.state.stickhandlingStreakStart = 0
+            this.state.silkyMittsAwarded = false
+          }
           break
       }
     })

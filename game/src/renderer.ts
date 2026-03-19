@@ -898,7 +898,7 @@ export class Renderer {
   // -----------------------------------------------------------------------
 
   private updateAvatar(state: GameState, dt: number): void {
-    const showAvatar = state.screen === 'playing' || state.screen === 'countdown' || state.screen === 'paused'
+    const showAvatar = state.screen === 'playing' || state.screen === 'countdown' || state.screen === 'paused' || state.screen === 'tutorial'
     this.avatarGroup.visible = showAvatar
     if (!showAvatar) return
 

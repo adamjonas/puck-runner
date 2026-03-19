@@ -94,6 +94,7 @@ export class OverlayController {
   private speedEl!: HTMLDivElement
   private stickhandlingEl!: HTMLDivElement
   private playerNameEl!: HTMLDivElement
+  private tutorialInstructionEl!: HTMLDivElement
 
   private titleOverlay!: HTMLDivElement
   private gameOverOverlay!: HTMLDivElement
@@ -314,6 +315,14 @@ export class OverlayController {
     } else {
       this.stickhandlingEl.style.opacity = '0'
     }
+
+    // Tutorial instruction
+    if (state.screen === 'tutorial' && state.tutorialText) {
+      this.tutorialInstructionEl.textContent = state.tutorialText
+      this.tutorialInstructionEl.style.opacity = '1'
+    } else {
+      this.tutorialInstructionEl.style.opacity = '0'
+    }
   }
 
   private beginGameOverCelebration(state: GameState): void {
@@ -516,6 +525,29 @@ export class OverlayController {
       transition: 'opacity 0.3s ease',
     })
     this.root.appendChild(this.stickhandlingEl)
+
+    // Tutorial instruction (persistent, center screen)
+    this.tutorialInstructionEl = div({
+      position: 'absolute',
+      top: '20%',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      fontFamily: FONT_TEXT,
+      fontSize: '32px',
+      fontWeight: '800',
+      color: '#fff',
+      textAlign: 'center',
+      textShadow: '0 2px 16px rgba(0,0,0,0.7)',
+      padding: '16px 32px',
+      borderRadius: '16px',
+      background: 'rgba(0, 0, 0, 0.55)',
+      backdropFilter: 'blur(8px)',
+      opacity: '0',
+      transition: 'opacity 0.4s ease',
+      whiteSpace: 'nowrap',
+      pointerEvents: 'none',
+    })
+    this.root.appendChild(this.tutorialInstructionEl)
   }
 
   private createTitleOverlay(): void {

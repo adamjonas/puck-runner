@@ -188,6 +188,9 @@ function update(now: number, dt: number): void {
     updateObstacles(state, dt, viewportHeight)
     updateCoins(state, dt, viewportHeight)
 
+    // Update tutorial overlay text
+    state.tutorialText = tutorial.getOverlayText()
+
     // Track lane visits for tutorial step 1
     tutorial.onLaneVisited(state.lane)
 

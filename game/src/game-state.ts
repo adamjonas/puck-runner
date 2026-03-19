@@ -52,6 +52,7 @@ export class GameState {
 
   // Tutorial
   tutorialActive = false
+  tutorialText = '' // current instruction text, set by TutorialManager via main.ts
 
   // Avatar position (0.0 = left edge, 1.0 = right edge)
   avatarX = 0.5
