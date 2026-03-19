@@ -38,6 +38,7 @@ let announcerBarEl: HTMLDivElement
 let announcerTextEl: HTMLSpanElement
 let speedEl: HTMLDivElement
 let stickhandlingEl: HTMLDivElement
+let playerNameEl: HTMLDivElement
 
 // Full-screen overlays
 let titleOverlay: HTMLDivElement
@@ -144,6 +145,21 @@ function createHUD(): void {
     textShadow: '0 2px 8px rgba(0,0,0,0.6)',
   })
   root.appendChild(livesEl)
+
+  // Player name (top center)
+  playerNameEl = div({
+    position: 'absolute',
+    top: '16px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    fontFamily: FONT_TEXT,
+    fontSize: '16px',
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+    textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+    letterSpacing: '1px',
+  })
+  root.appendChild(playerNameEl)
 
   // Deke indicator (bottom center)
   dekeEl = div({
@@ -631,6 +647,10 @@ export function updateOverlay(state: GameState, announcer: Announcer): void {
   // ----- HUD (only during playing) -----
 
   const isPlaying = state.screen === 'playing'
+
+  // Player name
+  playerNameEl.textContent = state.playerName || ''
+  playerNameEl.style.opacity = isPlaying && state.playerName ? '1' : '0'
 
   // Score
   scoreEl.textContent = String(state.score)
