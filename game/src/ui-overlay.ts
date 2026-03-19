@@ -81,6 +81,16 @@ interface OverlayControllerOptions {
   onPractice?: () => void
 }
 
+export function resolveSelectedProfile(
+  selectedProfile: string | null,
+  profiles: PlayerProfile[],
+): string | null {
+  if (selectedProfile === null) return null
+  return profiles.some((profile) => profile.name === selectedProfile)
+    ? selectedProfile
+    : null
+}
+
 export class OverlayController {
   private readonly root: HTMLDivElement
 
@@ -309,7 +319,7 @@ export class OverlayController {
       this.speedEl.style.opacity = '0'
     }
 
-    if (isPlaying && state.stickhandlingActive) {
+    if ((isPlaying || state.screen === 'tutorial') && state.stickhandlingActive) {
       this.stickhandlingEl.textContent = `STICKHANDLING ${state.stickhandlingFrequency.toFixed(1)}Hz`
       this.stickhandlingEl.style.opacity = '1'
     } else {
@@ -923,15 +933,7 @@ export class OverlayController {
     this.playerListEl.innerHTML = ''
 
     const profiles = loadProfiles()
-    if (profiles.length > 0) {
-      const selectedStillExists = this.selectedProfile !== null
-        && profiles.some((profile) => profile.name === this.selectedProfile)
-      if (!selectedStillExists) {
-        this.selectedProfile = profiles[0].name
-      }
-    } else {
-      this.selectedProfile = null
-    }
+    this.selectedProfile = resolveSelectedProfile(this.selectedProfile, profiles)
 
     const label = div({
       fontFamily: FONT_TEXT,
@@ -1051,6 +1053,7 @@ export class OverlayController {
     practiceBtn.addEventListener('click', (e) => {
       e.stopPropagation()
       e.preventDefault()
+      practiceBtn.blur()
       this.onPractice()
     })
     this.playerListEl.appendChild(practiceBtn)

@@ -37,7 +37,7 @@ const startNewRun = (now: number) => {
       state.screen = 'tutorial'
       state.tutorialActive = true
       state.startTime = now
-      state.speed = 0.6 // slow speed for tutorial
+      state.speed = getTutorialStepSpeed(TutorialStep.LANES)
       tutorial.start(state)
       lastTutorialStep = TutorialStep.LANES
       announceTutorialLanes(announcer)
@@ -59,7 +59,7 @@ export function startTutorial(): void {
   state.screen = 'tutorial'
   state.tutorialActive = true
   state.startTime = now
-  state.speed = 0.6
+  state.speed = getTutorialStepSpeed(TutorialStep.LANES)
   tutorial.start(state)
   lastTutorialStep = TutorialStep.LANES
   announceTutorialLanes(announcer)
@@ -68,6 +68,7 @@ export function startTutorial(): void {
 /** Start practice mode — enter tutorial regardless of profile completion */
 export function startPractice(): void {
   startTutorial()
+  state.playerName = ''
 }
 const overlay = new OverlayController({
   onReplay: () => startNewRun(performance.now()),
@@ -109,7 +110,13 @@ let fpsTimer = 0
 const BALL_LOST_GRACE_MS = 1000
 
 const TUTORIAL_LANES: Lane[] = ['left', 'center', 'right']
+const TUTORIAL_BASE_SPEED = 0.6
+const TUTORIAL_OBSTACLE_SPEED = 1.0
 let tutorialObstacleCount = 0
+
+function getTutorialStepSpeed(step: TutorialStep): number {
+  return step === TutorialStep.OBSTACLES ? TUTORIAL_OBSTACLE_SPEED : TUTORIAL_BASE_SPEED
+}
 
 function spawnTutorialObjects(state: GameState, tut: TutorialManager, now: number): void {
   const step = tut.getStep()
@@ -182,6 +189,7 @@ function update(now: number, dt: number): void {
 
   // Tutorial mode
   if (state.screen === 'tutorial') {
+    state.speed = getTutorialStepSpeed(tutorial.getStep())
     state.elapsed = now - state.startTime
     state.updatePosition(dt)
 

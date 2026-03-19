@@ -31,6 +31,7 @@ const OVERLAY_TEXT_KEYBOARD: Partial<Record<TutorialStep, string>> = {
 
 const STICKHANDLE_POINTS_PER = 5
 const STICKHANDLING_DURATION_REQUIRED = 3000
+const OBSTACLES_REQUIRED = 1
 
 export class TutorialManager {
   private step = TutorialStep.LANES
@@ -78,6 +79,12 @@ export class TutorialManager {
   }
 
   getOverlayText(): string {
+    if (this.step === TutorialStep.STICKHANDLING && this.stickhandlingDurationMs > 0) {
+      const elapsedSeconds = (this.stickhandlingDurationMs / 1000).toFixed(1)
+      const requiredSeconds = (STICKHANDLING_DURATION_REQUIRED / 1000).toFixed(1)
+      return `🏒 Keep it going! ${elapsedSeconds}s / ${requiredSeconds}s`
+    }
+
     if (!this.state?.trackerConnected) {
       const keyboardText = OVERLAY_TEXT_KEYBOARD[this.step]
       if (keyboardText) return keyboardText
@@ -118,7 +125,7 @@ export class TutorialManager {
   onObstacleDodged(): void {
     if (this.step !== TutorialStep.OBSTACLES) return
     this.obstaclesDodged++
-    if (this.obstaclesDodged >= 2) {
+    if (this.obstaclesDodged >= OBSTACLES_REQUIRED) {
       this.step = TutorialStep.COINS
     }
   }

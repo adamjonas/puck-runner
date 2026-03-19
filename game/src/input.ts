@@ -19,6 +19,43 @@ interface InputSample {
   serverTs: number
 }
 
+type InteractiveEventTarget = EventTarget & {
+  tagName?: string
+  isContentEditable?: boolean
+  parentElement?: InteractiveEventTarget | null
+}
+
+export function isInteractiveEventTarget(target: EventTarget | null): boolean {
+  let current = target as InteractiveEventTarget | null
+
+  while (current && typeof current === 'object') {
+    if (current.isContentEditable) return true
+
+    const tagName = typeof current.tagName === 'string'
+      ? current.tagName.toUpperCase()
+      : ''
+
+    if (
+      tagName === 'BUTTON'
+      || tagName === 'INPUT'
+      || tagName === 'SELECT'
+      || tagName === 'TEXTAREA'
+      || tagName === 'A'
+    ) {
+      return true
+    }
+
+    current = current.parentElement ?? null
+  }
+
+  return false
+}
+
+export function shouldSuppressGlobalKeydown(target: EventTarget | null, key: string): boolean {
+  if (!isInteractiveEventTarget(target)) return false
+  return key === ' ' || key === 'Enter'
+}
+
 export class InputManager {
   private ws: WebSocket | null = null
   private reconnectTimer: number | null = null
@@ -131,11 +168,13 @@ export class InputManager {
       return
     }
 
-    if (input.confidence >= 0.5 && this.state.screen === 'playing') {
+    const isControllableScreen = this.state.screen === 'playing' || this.state.screen === 'tutorial'
+
+    if (input.confidence >= 0.5 && isControllableScreen) {
       this.state.setLane(input.lane, now)
 
       // Deke: trigger on rising edge (false → true)
-      if (input.deke && !this.prevDeke) {
+      if (this.state.screen === 'playing' && input.deke && !this.prevDeke) {
         this.state.activateDeke(now)
       }
 
@@ -183,6 +222,8 @@ export class InputManager {
 
   setupKeyboard(): void {
     window.addEventListener('keydown', (e) => {
+      if (shouldSuppressGlobalKeydown(e.target, e.key)) return
+
       if (this.state.screen === 'game_over') {
         if (e.key === 'Escape' || e.key.toLowerCase() === 'm') {
           e.preventDefault()

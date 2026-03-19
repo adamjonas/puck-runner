@@ -67,7 +67,7 @@ describe('TutorialManager', () => {
 
   // --- Step 2: OBSTACLES ---
 
-  it('does not advance from OBSTACLES until 2 obstacles dodged', () => {
+  it('advances to COINS after 1 obstacle dodged', () => {
     // Advance to OBSTACLES
     tutorial.onLaneVisited('left')
     tutorial.onLaneVisited('center')
@@ -75,10 +75,10 @@ describe('TutorialManager', () => {
     expect(tutorial.getStep()).toBe(TutorialStep.OBSTACLES)
 
     tutorial.onObstacleDodged()
-    expect(tutorial.getStep()).toBe(TutorialStep.OBSTACLES)
+    expect(tutorial.getStep()).toBe(TutorialStep.COINS)
   })
 
-  it('advances to COINS after 2 obstacles dodged', () => {
+  it('ignores extra obstacle dodges after reaching COINS', () => {
     tutorial.onLaneVisited('left')
     tutorial.onLaneVisited('center')
     tutorial.onLaneVisited('right')
@@ -147,6 +147,24 @@ describe('TutorialManager', () => {
     tutorial.onCoinCollected()
 
     expect(tutorial.getOverlayText()).toContain('Press S')
+  })
+
+  it('shows live progress text during stickhandling', () => {
+    state.trackerConnected = false
+
+    tutorial.onLaneVisited('left')
+    tutorial.onLaneVisited('center')
+    tutorial.onLaneVisited('right')
+    tutorial.onObstacleDodged()
+    tutorial.onObstacleDodged()
+    tutorial.onCoinCollected()
+    tutorial.onCoinCollected()
+    tutorial.onCoinCollected()
+
+    tutorial.onStickhandlingDuration(1200)
+
+    expect(tutorial.getOverlayText()).toContain('Keep it going!')
+    expect(tutorial.getOverlayText()).toContain('1.2s / 3.0s')
   })
 
   // --- Step 4: STICKHANDLING ---
