@@ -90,7 +90,7 @@ export class GameState {
   dekeInvincibleUntil = 0 // timestamp
   dekeCooldownUntil = 0 // timestamp
   static readonly DEKE_INVINCIBLE_MS = 1000
-  static readonly DEKE_COOLDOWN_MS = 3000
+  static readonly DEKE_COOLDOWN_MS = 10000
 
   // Stickhandling
   stickhandlingActive = false
@@ -234,6 +234,8 @@ export class GameState {
     this.screen = 'playing'
     this.startTime = now
     this.elapsed = 0
+    this.stickhandlingStreakStart = 0
+    this.silkyMittsAwarded = false
     this.run.lastSurvivalTick = now
     this.run.lastStickhandlingTick = now
   }

@@ -1,5 +1,5 @@
 /**
- * Family profiles with per-person high scores stored in localStorage.
+ * Builtin family profiles plus custom player profiles stored in localStorage.
  */
 
 const STORAGE_KEY = 'puck-runner-profiles'
@@ -15,42 +15,78 @@ export interface PlayerProfile {
   gamesPlayed: number
   bestCombo: string
   tutorialComplete: boolean
+  jerseyNumber?: number
+  avatar?: string
+  tagline?: string
+  nickname?: string
 }
+
+export const BUILTIN_PROFILES: PlayerProfile[] = [
+  {
+    name: 'Cora',
+    jerseyNumber: 12,
+    avatar: '/avatars/cora.jpg',
+    tagline: 'Scores goals and plays violin — on the same day!',
+    highScore: 0,
+    gamesPlayed: 0,
+    bestCombo: '',
+    tutorialComplete: false,
+  },
+  {
+    name: 'Colby',
+    nickname: 'Zamboni Car',
+    jerseyNumber: 27,
+    avatar: '/avatars/colby.jpg',
+    tagline: 'Goes side to side. Favorite move: one foot stop.',
+    highScore: 0,
+    gamesPlayed: 0,
+    bestCombo: '',
+    tutorialComplete: false,
+  },
+]
+
+const BUILTIN_NAME_SET = new Set(BUILTIN_PROFILES.map((profile) => profile.name.toLowerCase()))
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-/** Load all profiles from localStorage. Returns [] on missing/corrupt data. */
+/** Load builtin profiles merged with saved progress, followed by custom profiles. */
 export function loadProfiles(): PlayerProfile[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
+  const storedProfiles = loadStoredProfiles()
+  const storedByName = new Map(
+    storedProfiles.map((profile) => [profile.name.toLowerCase(), profile]),
+  )
 
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
-      console.warn('puck-runner: corrupted profile data — resetting')
-      localStorage.removeItem(STORAGE_KEY)
-      return []
-    }
+  const builtinProfiles = BUILTIN_PROFILES.map((profile) =>
+    mergeBuiltinProfile(profile, storedByName.get(profile.name.toLowerCase())),
+  )
 
-    // Validate each entry
-    return parsed.filter(isValidProfile)
-  } catch {
-    console.warn('puck-runner: failed to load profiles — resetting')
-    try {
-      localStorage.removeItem(STORAGE_KEY)
-    } catch {
-      // Storage completely unavailable
-    }
-    return []
-  }
+  const customProfiles = storedProfiles
+    .filter((profile) => !isBuiltinProfileName(profile.name))
+    .map(normalizeCustomProfile)
+
+  return [...builtinProfiles, ...dedupeProfiles(customProfiles)]
 }
 
 /** Persist profiles to localStorage. */
 export function saveProfiles(profiles: PlayerProfile[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles))
+    const normalizedProfiles = [
+      ...BUILTIN_PROFILES.map((profile) =>
+        mergeBuiltinProfile(
+          profile,
+          profiles.find((candidate) => candidate.name.toLowerCase() === profile.name.toLowerCase()),
+        ),
+      ),
+      ...dedupeProfiles(
+        profiles
+          .filter((profile) => !isBuiltinProfileName(profile.name))
+          .map(normalizeCustomProfile),
+      ),
+    ]
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedProfiles))
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === 'QuotaExceededError') {
       console.warn('puck-runner: localStorage quota exceeded — profiles not saved')
@@ -60,49 +96,58 @@ export function saveProfiles(profiles: PlayerProfile[]): void {
   }
 }
 
-/**
- * Create a new profile.
- *
- * @returns The new profile, or `null` if validation fails.
- */
 export function addProfile(name: string): PlayerProfile | null {
   const trimmed = name.trim()
-
-  // Validate name length
   if (trimmed.length < 1 || trimmed.length > 20) {
     console.warn('puck-runner: profile name must be 1-20 characters')
     return null
   }
 
   const profiles = loadProfiles()
-
-  // Check for duplicates (case-insensitive)
-  if (
-    profiles.some(
-      (p) => p.name.toLowerCase() === trimmed.toLowerCase(),
-    )
-  ) {
+  if (profiles.some((profile) => profile.name.toLowerCase() === trimmed.toLowerCase())) {
     console.warn(`puck-runner: profile "${trimmed}" already exists`)
     return null
   }
 
-  // Enforce max profiles
-  if (profiles.length >= MAX_PROFILES) {
+  const customProfileCount = profiles.filter(
+    (profile) => !isBuiltinProfileName(profile.name),
+  ).length
+
+  if (customProfileCount >= MAX_PROFILES) {
     console.warn(`puck-runner: maximum of ${MAX_PROFILES} profiles reached`)
     return null
   }
 
-  const profile: PlayerProfile = {
+  const profile = normalizeCustomProfile({
     name: trimmed,
     highScore: 0,
     gamesPlayed: 0,
     bestCombo: '',
     tutorialComplete: false,
+  })
+
+  saveProfiles([...profiles, profile])
+  return profile
+}
+
+export function deleteProfile(name: string): boolean {
+  if (isBuiltinProfileName(name)) {
+    console.warn(`puck-runner: cannot delete builtin profile "${name}"`)
+    return false
   }
 
-  profiles.push(profile)
-  saveProfiles(profiles)
-  return profile
+  const profiles = loadProfiles()
+  const nextProfiles = profiles.filter(
+    (profile) => profile.name.toLowerCase() !== name.toLowerCase(),
+  )
+
+  if (nextProfiles.length === profiles.length) {
+    console.warn(`puck-runner: profile "${name}" not found`)
+    return false
+  }
+
+  saveProfiles(nextProfiles)
+  return true
 }
 
 /**
@@ -120,7 +165,7 @@ export function updateProfile(
 ): PlayerProfile | null {
   const profiles = loadProfiles()
   const profile = profiles.find(
-    (p) => p.name.toLowerCase() === name.toLowerCase(),
+    (candidate) => candidate.name.toLowerCase() === name.toLowerCase(),
   )
 
   if (!profile) {
@@ -135,8 +180,6 @@ export function updateProfile(
   }
 
   if (combo && (!profile.bestCombo || combo !== profile.bestCombo)) {
-    // Keep the "best" combo — prefer whichever was achieved most recently
-    // when provided, since the caller only sends noteworthy combos.
     profile.bestCombo = combo
   }
 
@@ -154,30 +197,74 @@ export function getLeaderboard(): PlayerProfile[] {
   return profiles.sort((a, b) => b.highScore - a.highScore)
 }
 
-/**
- * Delete a profile by name.
- *
- * @returns `true` if the profile was found and removed.
- */
-export function deleteProfile(name: string): boolean {
-  const profiles = loadProfiles()
-  const idx = profiles.findIndex(
-    (p) => p.name.toLowerCase() === name.toLowerCase(),
-  )
-
-  if (idx === -1) {
-    console.warn(`puck-runner: profile "${name}" not found`)
-    return false
-  }
-
-  profiles.splice(idx, 1)
-  saveProfiles(profiles)
-  return true
-}
-
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function isBuiltinProfileName(name: string): boolean {
+  return BUILTIN_NAME_SET.has(name.toLowerCase())
+}
+
+function loadStoredProfiles(): PlayerProfile[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return []
+
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      console.warn('puck-runner: corrupted profile data — resetting')
+      localStorage.removeItem(STORAGE_KEY)
+      return []
+    }
+
+    return parsed.filter(isValidProfile)
+  } catch {
+    console.warn('puck-runner: failed to load profiles — resetting')
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      // Storage completely unavailable
+    }
+    return []
+  }
+}
+
+function mergeBuiltinProfile(
+  builtin: PlayerProfile,
+  saved?: PlayerProfile,
+): PlayerProfile {
+  return {
+    ...builtin,
+    highScore: saved?.highScore ?? builtin.highScore,
+    gamesPlayed: saved?.gamesPlayed ?? builtin.gamesPlayed,
+    bestCombo: saved?.bestCombo ?? builtin.bestCombo,
+    tutorialComplete: saved?.tutorialComplete ?? builtin.tutorialComplete,
+  }
+}
+
+function normalizeCustomProfile(profile: PlayerProfile): PlayerProfile {
+  return {
+    name: profile.name.trim(),
+    highScore: profile.highScore,
+    gamesPlayed: profile.gamesPlayed,
+    bestCombo: profile.bestCombo,
+    tutorialComplete: profile.tutorialComplete,
+  }
+}
+
+function dedupeProfiles(profiles: PlayerProfile[]): PlayerProfile[] {
+  const seen = new Set<string>()
+  const deduped: PlayerProfile[] = []
+
+  for (const profile of profiles) {
+    const key = profile.name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(profile)
+  }
+
+  return deduped
+}
 
 /** Runtime shape check for a single profile object. Backfills missing fields. */
 function isValidProfile(value: unknown): value is PlayerProfile {
@@ -189,7 +276,6 @@ function isValidProfile(value: unknown): value is PlayerProfile {
     typeof obj.gamesPlayed === 'number' &&
     typeof obj.bestCombo === 'string'
   if (!valid) return false
-  // Backward compat: default tutorialComplete to false for old profiles
   if (typeof obj.tutorialComplete !== 'boolean') {
     obj.tutorialComplete = false
   }

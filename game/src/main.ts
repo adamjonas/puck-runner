@@ -23,36 +23,10 @@ const tutorial = new TutorialManager()
 
 // Track last tutorial step for announcements
 let lastTutorialStep: TutorialStep | null = null
+let practiceMode = false
 
-const startNewRun = (now: number) => {
-  // Check if the player needs the tutorial
-  const name = state.playerName
-  if (name) {
-    const profiles = loadProfiles()
-    const profile = profiles.find(p => p.name.toLowerCase() === name.toLowerCase())
-    if (profile && !profile.tutorialComplete) {
-      // Enter tutorial mode
-      state.syncTime(now)
-      state.reset()
-      state.screen = 'tutorial'
-      state.tutorialActive = true
-      state.startTime = now
-      state.speed = getTutorialStepSpeed(TutorialStep.LANES)
-      tutorial.start(state)
-      lastTutorialStep = TutorialStep.LANES
-      announceTutorialLanes(announcer)
-      return
-    }
-  }
-  state.start(now)
-}
-const returnToMainMenu = () => {
-  state.reset()
-}
-
-/** Start tutorial mode directly (callable from UI overlay) */
-export function startTutorial(): void {
-  console.log('[puck-runner] Starting tutorial')
+function beginTutorial(isPractice: boolean): void {
+  practiceMode = isPractice
   const now = performance.now()
   state.syncTime(now)
   state.reset()
@@ -65,9 +39,34 @@ export function startTutorial(): void {
   announceTutorialLanes(announcer)
 }
 
+const startNewRun = (now: number) => {
+  practiceMode = false
+  // Check if the player needs the tutorial
+  const name = state.playerName
+  if (name) {
+    const profiles = loadProfiles()
+    const profile = profiles.find(p => p.name.toLowerCase() === name.toLowerCase())
+    if (profile && !profile.tutorialComplete) {
+      beginTutorial(false)
+      return
+    }
+  }
+  state.start(now)
+}
+const returnToMainMenu = () => {
+  practiceMode = false
+  state.reset()
+}
+
+/** Start tutorial mode directly (callable from UI overlay) */
+export function startTutorial(): void {
+  console.log('[puck-runner] Starting tutorial')
+  beginTutorial(false)
+}
+
 /** Start practice mode — enter tutorial regardless of profile completion */
 export function startPractice(): void {
-  startTutorial()
+  beginTutorial(true)
   state.playerName = ''
 }
 const overlay = new OverlayController({
@@ -112,7 +111,20 @@ const BALL_LOST_GRACE_MS = 1000
 const TUTORIAL_LANES: Lane[] = ['left', 'center', 'right']
 const TUTORIAL_BASE_SPEED = 0.6
 const TUTORIAL_OBSTACLE_SPEED = 1.0
+const PRACTICE_COIN_START_Y = 0.54
+const PRACTICE_COIN_SPACING = 0.08
 let tutorialObstacleCount = 0
+
+function laneHasTutorialObstacleConflict(state: GameState, lane: Lane): boolean {
+  for (const obstacle of state.obstacles) {
+    if (!obstacle.active) continue
+    if (obstacle.y > 0.95) continue
+    if (obstacle.lane === lane || obstacle.secondLane === lane) {
+      return true
+    }
+  }
+  return false
+}
 
 function getTutorialStepSpeed(step: TutorialStep): number {
   return step === TutorialStep.OBSTACLES ? TUTORIAL_OBSTACLE_SPEED : TUTORIAL_BASE_SPEED
@@ -127,17 +139,19 @@ function spawnTutorialObjects(state: GameState, tut: TutorialManager, now: numbe
     if (!hasActive) {
       const obs = state.obstacles.find(o => !o.active)
       if (obs) {
-        // Alternate: first obstacle in a different lane, second in player's lane
-        tutorialObstacleCount++
-        const playerLane = state.lane
-        let lane: Lane
-        if (tutorialObstacleCount % 2 === 1) {
-          // Safe lane — pick a lane that's NOT the player's lane
-          const safeLanes = TUTORIAL_LANES.filter(l => l !== playerLane)
-          lane = safeLanes[Math.floor(Math.random() * safeLanes.length)]
-        } else {
-          // Player's lane — force them to dodge
-          lane = playerLane
+        let lane: Lane = 'center'
+        if (!practiceMode) {
+          // Alternate: first obstacle in a different lane, second in player's lane
+          tutorialObstacleCount++
+          const playerLane = state.lane
+          if (tutorialObstacleCount % 2 === 1) {
+            // Safe lane — pick a lane that's NOT the player's lane
+            const safeLanes = TUTORIAL_LANES.filter(l => l !== playerLane)
+            lane = safeLanes[Math.floor(Math.random() * safeLanes.length)]
+          } else {
+            // Player's lane — force them to dodge
+            lane = playerLane
+          }
         }
         obs.lane = lane
         obs.y = 0
@@ -156,11 +170,16 @@ function spawnTutorialObjects(state: GameState, tut: TutorialManager, now: numbe
     // Spawn a group of 3 coins when none are active
     const hasActive = state.coins.some(c => c.active)
     if (!hasActive) {
-      // Pick a visible lane (prefer one that's not the player's current lane for movement)
-      const otherLanes = TUTORIAL_LANES.filter(l => l !== state.lane)
-      const lane = otherLanes.length > 0
-        ? otherLanes[Math.floor(Math.random() * otherLanes.length)]
-        : state.lane
+      // Keep coins off active obstacles and prefer a lane that encourages movement.
+      const safeLanes = TUTORIAL_LANES.filter((lane) => !laneHasTutorialObstacleConflict(state, lane))
+      if (safeLanes.length === 0) return
+
+      const moveLanes = safeLanes.filter((lane) => lane !== state.lane)
+      const lane = moveLanes.length > 0
+        ? moveLanes[Math.floor(Math.random() * moveLanes.length)]
+        : safeLanes.length > 0
+          ? safeLanes[Math.floor(Math.random() * safeLanes.length)]
+          : state.lane
 
       const available: typeof state.coins[number][] = []
       for (const c of state.coins) {
@@ -173,7 +192,9 @@ function spawnTutorialObjects(state: GameState, tut: TutorialManager, now: numbe
         for (let i = 0; i < 3; i++) {
           const coin = available[i]
           coin.lane = lane
-          coin.y = -(i * 0.08)
+          coin.y = practiceMode
+            ? (PRACTICE_COIN_START_Y - i * PRACTICE_COIN_SPACING)
+            : -(i * 0.08)
           coin.active = true
           coin.collected = false
         }

@@ -7,7 +7,13 @@
 
 import { GameState } from './game-state'
 import type { Announcer } from './announcer'
-import { loadProfiles, addProfile, type PlayerProfile } from './profiles'
+import {
+  addProfile,
+  BUILTIN_PROFILES,
+  deleteProfile,
+  loadProfiles,
+  type PlayerProfile,
+} from './profiles'
 
 const FONT_TEXT = "-apple-system, system-ui, 'BlinkMacSystemFont', sans-serif"
 const FONT_MONO = "'SF Mono', 'Menlo', monospace"
@@ -91,6 +97,59 @@ export function resolveSelectedProfile(
     : null
 }
 
+function formatProfileLabel(
+  profile: Pick<PlayerProfile, 'name' | 'jerseyNumber'>,
+  uppercase = false,
+): string {
+  const name = uppercase ? profile.name.toUpperCase() : profile.name
+  return profile.jerseyNumber ? `${name} #${profile.jerseyNumber}` : name
+}
+
+function createProfileAvatar(
+  profile: PlayerProfile,
+  isSelected: boolean,
+): HTMLElement {
+  const avatarBorder = isSelected
+    ? '3px solid rgba(255,215,0,0.82)'
+    : '3px solid rgba(255,255,255,0.16)'
+
+  if (profile.avatar) {
+    const avatar = document.createElement('img')
+    avatar.src = profile.avatar
+    avatar.alt = `${profile.name} avatar`
+    css(avatar, {
+      width: 'clamp(112px, 18vw, 148px)',
+      height: 'clamp(112px, 18vw, 148px)',
+      borderRadius: '50%',
+      objectFit: 'cover',
+      border: avatarBorder,
+      boxShadow: '0 10px 28px rgba(0,0,0,0.3)',
+      background: 'rgba(255,255,255,0.08)',
+    })
+    return avatar
+  }
+
+  const placeholder = div({
+    width: 'clamp(112px, 18vw, 148px)',
+    height: 'clamp(112px, 18vw, 148px)',
+    borderRadius: '50%',
+    border: avatarBorder,
+    boxShadow: '0 10px 28px rgba(0,0,0,0.3)',
+    background: 'linear-gradient(135deg, rgba(125,211,252,0.28) 0%, rgba(255,255,255,0.08) 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: FONT_TEXT,
+    fontSize: scaled(40),
+    fontWeight: '900',
+    color: 'rgba(255,255,255,0.94)',
+    textTransform: 'uppercase',
+    letterSpacing: '1px',
+  })
+  placeholder.textContent = profile.name.trim().charAt(0) || '?'
+  return placeholder
+}
+
 export class OverlayController {
   private readonly root: HTMLDivElement
 
@@ -127,6 +186,7 @@ export class OverlayController {
   private gameOverReplayFillEl!: HTMLDivElement
 
   private selectedProfile: string | null = null
+  private selectedProfileData: PlayerProfile | null = null
   private playerListDirty = true
   private titleVisibleLastFrame = false
   private lastComboText = ''
@@ -184,7 +244,7 @@ export class OverlayController {
       if (!this.titleVisibleLastFrame || this.playerListDirty) {
         this.renderPlayerSelect()
       }
-      state.playerName = this.selectedProfile ?? ''
+      state.playerName = this.selectedProfileData?.name ?? ''
       this.overlayHighScoreEl.textContent = state.highScore > 0 ? `HIGH SCORE: ${state.highScore}` : ''
     } else {
       this.titleOverlay.style.opacity = '0'
@@ -196,7 +256,10 @@ export class OverlayController {
       this.countdownOverlay.style.opacity = '1'
       const remaining = Math.ceil((state.countdownEnd - now) / 1000)
       this.countdownNumberEl.textContent = String(Math.max(1, Math.min(3, remaining)))
-      const name = state.playerName || 'Player'
+      const activeProfile = this.getActiveProfile(state.playerName)
+      const name = activeProfile
+        ? formatProfileLabel(activeProfile, true)
+        : (state.playerName || 'Player')
       this.countdownReadyEl.textContent = `${name}, ready?!?`
     } else {
       this.countdownOverlay.style.opacity = '0'
@@ -225,8 +288,11 @@ export class OverlayController {
     }
 
     const isPlaying = state.screen === 'playing'
+    const activeProfile = this.getActiveProfile(state.playerName)
 
-    this.playerNameEl.textContent = state.playerName || ''
+    this.playerNameEl.textContent = activeProfile
+      ? formatProfileLabel(activeProfile, true)
+      : (state.playerName || '')
     this.playerNameEl.style.opacity = isPlaying && state.playerName ? '1' : '0'
 
     this.scoreEl.textContent = String(state.score)
@@ -349,7 +415,10 @@ export class OverlayController {
   }
 
   private buildGameOverMessage(state: GameState, isHighScore: boolean): string {
-    const playerName = state.playerName || 'Player'
+    const activeProfile = this.getActiveProfile(state.playerName)
+    const playerName = activeProfile
+      ? formatProfileLabel(activeProfile, true)
+      : (state.playerName || 'Player')
     const seconds = Math.max(1, Math.floor(state.elapsed / 1000))
 
     if (isHighScore) {
@@ -604,10 +673,9 @@ export class OverlayController {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: '8px',
+      gap: '16px',
       marginBottom: '24px',
-      maxHeight: '300px',
-      overflowY: 'auto',
+      width: 'min(92vw, 760px)',
       pointerEvents: 'auto',
     })
     this.titleOverlay.appendChild(this.playerListEl)
@@ -929,58 +997,185 @@ export class OverlayController {
     this.root.appendChild(this.countdownOverlay)
   }
 
+  private getActiveProfile(name: string): PlayerProfile | null {
+    if (!name) return null
+    if (
+      this.selectedProfileData
+      && this.selectedProfileData.name.toLowerCase() === name.toLowerCase()
+    ) {
+      return this.selectedProfileData
+    }
+
+    return loadProfiles().find(
+      (profile) => profile.name.toLowerCase() === name.toLowerCase(),
+    ) ?? null
+  }
+
   private renderPlayerSelect(): void {
     this.playerListEl.innerHTML = ''
 
     const profiles = loadProfiles()
     this.selectedProfile = resolveSelectedProfile(this.selectedProfile, profiles)
+    this.selectedProfileData = this.selectedProfile
+      ? profiles.find((profile) => profile.name === this.selectedProfile) ?? null
+      : null
 
     const label = div({
       fontFamily: FONT_TEXT,
-      fontSize: scaled(14),
-      color: 'rgba(255,255,255,0.5)',
-      marginBottom: '4px',
+      fontSize: scaled(15),
+      color: 'rgba(255,255,255,0.64)',
+      marginBottom: '2px',
+      letterSpacing: '1px',
+      textTransform: 'uppercase',
     })
-    label.textContent = profiles.length > 0 ? 'Select Player' : 'Add a player to track your scores!'
+    label.textContent = 'Choose Your Skater'
     this.playerListEl.appendChild(label)
 
+    const cardGrid = div({
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+      gap: '18px',
+      width: '100%',
+      alignItems: 'stretch',
+    })
+
     profiles.forEach((profile: PlayerProfile) => {
-      const btn = document.createElement('button')
-      css(btn, {
-        fontFamily: FONT_TEXT,
-        fontSize: scaled(16),
-        fontWeight: '600',
-        color: this.selectedProfile === profile.name ? '#000' : '#fff',
-        background: this.selectedProfile === profile.name ? GOLD : 'rgba(255,255,255,0.1)',
-        border: 'none',
-        borderRadius: '8px',
-        padding: '8px 24px',
-        cursor: 'pointer',
-        minWidth: '180px',
-        transition: 'background 0.2s ease, color 0.2s ease',
-        pointerEvents: 'auto',
+      const isSelected = this.selectedProfile === profile.name
+      const isBuiltin = BUILTIN_PROFILES.some(
+        (builtinProfile) => builtinProfile.name.toLowerCase() === profile.name.toLowerCase(),
+      )
+      const cardWrap = div({
+        position: 'relative',
+        width: '100%',
       })
-      btn.textContent = `${profile.name}  (${profile.highScore})`
-      btn.addEventListener('click', () => {
+
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.setAttribute('aria-pressed', String(isSelected))
+      css(card, {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '10px',
+        width: '100%',
+        padding: '22px 20px 20px',
+        borderRadius: '28px',
+        border: isSelected ? `2px solid ${GOLD}` : '2px solid rgba(255,255,255,0.14)',
+        background: isSelected
+          ? 'linear-gradient(180deg, rgba(255,215,0,0.18) 0%, rgba(255,255,255,0.07) 100%)'
+          : 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.04) 100%)',
+        boxShadow: isSelected
+          ? '0 20px 44px rgba(255,215,0,0.16)'
+          : '0 16px 36px rgba(0,0,0,0.18)',
+        cursor: 'pointer',
+        pointerEvents: 'auto',
+        opacity: isSelected ? '1' : '0.72',
+        transform: isSelected ? 'scale(1.03)' : 'scale(1)',
+        transition: 'transform 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, background 0.2s ease, box-shadow 0.2s ease',
+      })
+
+      const avatar = createProfileAvatar(profile, isSelected)
+      card.appendChild(avatar)
+
+      const nameEl = div({
+        fontFamily: FONT_TEXT,
+        fontSize: scaled(22),
+        fontWeight: '900',
+        color: '#fff',
+        letterSpacing: '1.5px',
+        textAlign: 'center',
+        textTransform: 'uppercase',
+      })
+      nameEl.textContent = formatProfileLabel(profile, true)
+      card.appendChild(nameEl)
+
+      if (profile.nickname) {
+        const nicknameEl = div({
+          fontFamily: FONT_TEXT,
+          fontSize: scaled(14),
+          fontWeight: '600',
+          color: 'rgba(255,255,255,0.82)',
+          textAlign: 'center',
+        })
+        nicknameEl.textContent = profile.nickname
+        card.appendChild(nicknameEl)
+      }
+
+      const taglineEl = div({
+        fontFamily: FONT_TEXT,
+        fontSize: scaled(14),
+        fontWeight: '500',
+        lineHeight: '1.45',
+        color: 'rgba(255,255,255,0.62)',
+        textAlign: 'center',
+        maxWidth: '24ch',
+        minHeight: '3.1em',
+      })
+      taglineEl.textContent = profile.tagline ?? ''
+      card.appendChild(taglineEl)
+
+      card.addEventListener('click', () => {
         this.selectedProfile = profile.name
+        this.selectedProfileData = profile
         this.playerListDirty = true
         this.renderPlayerSelect()
       })
-      this.playerListEl.appendChild(btn)
+
+      cardWrap.appendChild(card)
+
+      if (!isBuiltin) {
+        const deleteBtn = document.createElement('button')
+        deleteBtn.type = 'button'
+        deleteBtn.setAttribute('aria-label', `Delete ${profile.name}`)
+        css(deleteBtn, {
+          position: 'absolute',
+          top: '12px',
+          right: '12px',
+          width: '32px',
+          height: '32px',
+          borderRadius: '999px',
+          border: '1px solid rgba(255,255,255,0.18)',
+          background: 'rgba(0,0,0,0.34)',
+          color: 'rgba(255,255,255,0.78)',
+          fontFamily: FONT_TEXT,
+          fontSize: scaled(18),
+          fontWeight: '700',
+          cursor: 'pointer',
+          pointerEvents: 'auto',
+          transition: 'background 0.2s ease, color 0.2s ease',
+        })
+        deleteBtn.textContent = '×'
+        deleteBtn.addEventListener('click', (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          deleteProfile(profile.name)
+          if (this.selectedProfile === profile.name) {
+            this.selectedProfile = null
+            this.selectedProfileData = null
+          }
+          this.playerListDirty = true
+          this.renderPlayerSelect()
+        })
+        cardWrap.appendChild(deleteBtn)
+      }
+
+      cardGrid.appendChild(cardWrap)
     })
+
+    this.playerListEl.appendChild(cardGrid)
 
     const addBtn = document.createElement('button')
     css(addBtn, {
       fontFamily: FONT_TEXT,
-      fontSize: scaled(20),
-      fontWeight: '700',
-      color: 'rgba(255,255,255,0.5)',
-      background: 'rgba(255,255,255,0.05)',
-      border: '2px dashed rgba(255,255,255,0.2)',
-      borderRadius: '8px',
-      padding: '6px 24px',
+      fontSize: scaled(16),
+      fontWeight: '600',
+      color: 'rgba(255,255,255,0.86)',
+      background: 'rgba(255,255,255,0.08)',
+      border: '2px dashed rgba(255,255,255,0.26)',
+      borderRadius: '999px',
+      padding: '10px 24px',
       cursor: 'pointer',
-      minWidth: '180px',
+      minWidth: '220px',
       transition: 'background 0.2s ease',
       pointerEvents: 'auto',
     })
@@ -992,29 +1187,35 @@ export class OverlayController {
         fontSize: scaled(16),
         color: '#fff',
         background: 'rgba(255,255,255,0.1)',
-        border: '2px solid rgba(46,204,113,0.5)',
-        borderRadius: '8px',
-        padding: '6px 12px',
+        border: '2px solid rgba(255,255,255,0.24)',
+        borderRadius: '999px',
+        padding: '10px 18px',
         outline: 'none',
-        minWidth: '180px',
+        minWidth: '220px',
         textAlign: 'center',
         pointerEvents: 'auto',
       })
-      input.placeholder = 'Enter name...'
+      input.placeholder = 'New player name'
       input.maxLength = 20
       addBtn.replaceWith(input)
       input.focus()
 
+      let cancelled = false
+
       const submit = () => {
-        const name = input.value.trim()
-        if (name) {
-          const profile = addProfile(name)
-          if (profile) {
-            this.selectedProfile = profile.name
-            this.playerListDirty = true
-          }
+        if (cancelled) return
+        const created = addProfile(input.value)
+        if (created) {
+          this.selectedProfile = created.name
+          this.selectedProfileData = created
+          this.playerListDirty = true
         }
         this.renderPlayerSelect()
+      }
+
+      const handleBlur = () => {
+        if (cancelled) return
+        submit()
       }
 
       input.addEventListener('keydown', (event) => {
@@ -1022,13 +1223,15 @@ export class OverlayController {
           event.preventDefault()
           event.stopPropagation()
           submit()
-        }
-        if (event.key === 'Escape') {
+        } else if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          cancelled = true
+          input.removeEventListener('blur', handleBlur)
           this.renderPlayerSelect()
         }
-        event.stopPropagation()
       })
-      input.addEventListener('blur', submit)
+      input.addEventListener('blur', handleBlur)
     })
     this.playerListEl.appendChild(addBtn)
 
@@ -1036,18 +1239,18 @@ export class OverlayController {
     const practiceBtn = document.createElement('button')
     css(practiceBtn, {
       fontFamily: FONT_TEXT,
-      fontSize: '16px',
+      fontSize: scaled(16),
       fontWeight: '600',
       color: GREEN,
       background: 'rgba(46, 204, 113, 0.1)',
       border: `2px solid ${GREEN}`,
-      borderRadius: '8px',
-      padding: '8px 24px',
+      borderRadius: '999px',
+      padding: '10px 24px',
       cursor: 'pointer',
-      minWidth: '180px',
+      minWidth: '220px',
       transition: 'background 0.2s ease',
       pointerEvents: 'auto',
-      marginTop: '8px',
+      marginTop: '4px',
     })
     practiceBtn.textContent = '🏒 Practice'
     practiceBtn.addEventListener('click', (e) => {

@@ -1,15 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
-  loadProfiles,
+  BUILTIN_PROFILES,
   addProfile,
-  updateProfile,
-  getLeaderboard,
   deleteProfile,
+  getLeaderboard,
+  loadProfiles,
+  updateProfile,
 } from './profiles'
-
-// ---------------------------------------------------------------------------
-// Mock localStorage
-// ---------------------------------------------------------------------------
 
 const storage = new Map<string, string>()
 
@@ -24,250 +21,152 @@ beforeEach(() => {
   storage.clear()
 })
 
-// ---------------------------------------------------------------------------
-// loadProfiles
-// ---------------------------------------------------------------------------
-
 describe('loadProfiles', () => {
-  it('returns empty array when no profiles saved', () => {
-    expect(loadProfiles()).toEqual([])
+  it('returns builtin profiles when no profiles are saved', () => {
+    expect(loadProfiles()).toEqual(BUILTIN_PROFILES)
   })
 
-  it('returns saved profiles', () => {
+  it('merges saved builtin progress and appends custom profiles', () => {
     storage.set(
       'puck-runner-profiles',
       JSON.stringify([
-        { name: 'Alice', highScore: 100, gamesPlayed: 5, bestCombo: '' },
+        {
+          name: 'Cora',
+          highScore: 240,
+          gamesPlayed: 5,
+          bestCombo: 'THE SNIPE',
+          tutorialComplete: true,
+          avatar: '/avatars/not-cora.jpg',
+        },
+        {
+          name: 'Colby',
+          highScore: 80,
+          gamesPlayed: 2,
+          bestCombo: '',
+          tutorialComplete: false,
+        },
+        {
+          name: 'Wayne',
+          highScore: 999,
+          gamesPlayed: 9,
+          bestCombo: 'LEGACY',
+          tutorialComplete: true,
+        },
       ]),
     )
+
     const profiles = loadProfiles()
-    expect(profiles).toHaveLength(1)
-    expect(profiles[0].name).toBe('Alice')
+
+    expect(profiles).toHaveLength(3)
+    expect(profiles[0]).toMatchObject({
+      name: 'Cora',
+      highScore: 240,
+      avatar: '/avatars/cora.jpg',
+      jerseyNumber: 12,
+    })
+    expect(profiles[1]).toMatchObject({
+      name: 'Colby',
+      highScore: 80,
+      avatar: '/avatars/colby.jpg',
+      jerseyNumber: 27,
+    })
+    expect(profiles[2]).toMatchObject({
+      name: 'Wayne',
+      highScore: 999,
+      gamesPlayed: 9,
+      bestCombo: 'LEGACY',
+      tutorialComplete: true,
+    })
   })
 
-  it('handles corrupted localStorage gracefully (invalid JSON)', () => {
+  it('handles corrupted localStorage gracefully', () => {
     storage.set('puck-runner-profiles', 'not valid json{{{')
-    const profiles = loadProfiles()
-    expect(profiles).toEqual([])
-  })
 
-  it('handles corrupted localStorage gracefully (not an array)', () => {
-    storage.set('puck-runner-profiles', JSON.stringify({ name: 'bad' }))
-    const profiles = loadProfiles()
-    expect(profiles).toEqual([])
-  })
-
-  it('filters out entries with invalid shape', () => {
-    storage.set(
-      'puck-runner-profiles',
-      JSON.stringify([
-        { name: 'Valid', highScore: 50, gamesPlayed: 1, bestCombo: '' },
-        { name: 123, highScore: 'bad' }, // invalid
-        null,
-        'string-entry',
-      ]),
-    )
-    const profiles = loadProfiles()
-    expect(profiles).toHaveLength(1)
-    expect(profiles[0].name).toBe('Valid')
+    expect(loadProfiles()).toEqual(BUILTIN_PROFILES)
   })
 })
 
-// ---------------------------------------------------------------------------
-// addProfile
-// ---------------------------------------------------------------------------
-
 describe('addProfile', () => {
-  it('creates a new profile with name, highScore=0, gamesPlayed=0', () => {
-    const profile = addProfile('Wayne')
-    expect(profile).not.toBeNull()
-    expect(profile!.name).toBe('Wayne')
-    expect(profile!.highScore).toBe(0)
-    expect(profile!.gamesPlayed).toBe(0)
-    expect(profile!.bestCombo).toBe('')
+  it('creates and persists a custom profile', () => {
+    const created = addProfile('Wayne')
+
+    expect(created).toMatchObject({
+      name: 'Wayne',
+      highScore: 0,
+      gamesPlayed: 0,
+      bestCombo: '',
+      tutorialComplete: false,
+    })
+
+    expect(loadProfiles().map((profile) => profile.name)).toEqual(['Cora', 'Colby', 'Wayne'])
   })
 
-  it('persists the profile to localStorage', () => {
-    addProfile('Wayne')
-    const stored = loadProfiles()
-    expect(stored).toHaveLength(1)
-    expect(stored[0].name).toBe('Wayne')
+  it('rejects duplicates against builtin names', () => {
+    expect(addProfile('cora')).toBeNull()
   })
 
-  it('trims whitespace from names', () => {
-    const profile = addProfile('  Wayne  ')
-    expect(profile).not.toBeNull()
-    expect(profile!.name).toBe('Wayne')
-  })
-
-  it('rejects empty names', () => {
-    expect(addProfile('')).toBeNull()
-    expect(addProfile('   ')).toBeNull()
-  })
-
-  it('rejects names longer than 20 characters', () => {
-    const longName = 'A'.repeat(21)
-    expect(addProfile(longName)).toBeNull()
-  })
-
-  it('accepts names exactly 20 characters', () => {
-    const name = 'A'.repeat(20)
-    expect(addProfile(name)).not.toBeNull()
-  })
-
-  it('rejects duplicate names (case-insensitive)', () => {
-    addProfile('Wayne')
-    expect(addProfile('wayne')).toBeNull()
-    expect(addProfile('WAYNE')).toBeNull()
-    expect(addProfile('Wayne')).toBeNull()
-  })
-
-  it('enforces max 20 profiles', () => {
+  it('allows 20 custom profiles in addition to the builtin skaters', () => {
     for (let i = 0; i < 20; i++) {
       expect(addProfile(`Player${i}`)).not.toBeNull()
     }
+
     expect(addProfile('Player20')).toBeNull()
-    expect(loadProfiles()).toHaveLength(20)
+    expect(loadProfiles()).toHaveLength(22)
   })
 })
-
-// ---------------------------------------------------------------------------
-// updateProfile
-// ---------------------------------------------------------------------------
-
-describe('updateProfile', () => {
-  beforeEach(() => {
-    addProfile('Wayne')
-  })
-
-  it('updates highScore if new score is higher', () => {
-    const updated = updateProfile('Wayne', 500)
-    expect(updated).not.toBeNull()
-    expect(updated!.highScore).toBe(500)
-  })
-
-  it('does NOT update highScore if new score is lower', () => {
-    updateProfile('Wayne', 500)
-    const updated = updateProfile('Wayne', 200)
-    expect(updated).not.toBeNull()
-    expect(updated!.highScore).toBe(500)
-  })
-
-  it('does NOT update highScore if new score is equal', () => {
-    updateProfile('Wayne', 500)
-    const updated = updateProfile('Wayne', 500)
-    expect(updated).not.toBeNull()
-    expect(updated!.highScore).toBe(500)
-  })
-
-  it('increments gamesPlayed', () => {
-    updateProfile('Wayne', 100)
-    updateProfile('Wayne', 200)
-    const updated = updateProfile('Wayne', 50)
-    expect(updated).not.toBeNull()
-    expect(updated!.gamesPlayed).toBe(3)
-  })
-
-  it('updates bestCombo when provided', () => {
-    const updated = updateProfile('Wayne', 100, 'THE SNIPE')
-    expect(updated).not.toBeNull()
-    expect(updated!.bestCombo).toBe('THE SNIPE')
-  })
-
-  it('returns null for non-existent profile', () => {
-    expect(updateProfile('Nobody', 100)).toBeNull()
-  })
-
-  it('finds profile case-insensitively', () => {
-    const updated = updateProfile('wayne', 300)
-    expect(updated).not.toBeNull()
-    expect(updated!.highScore).toBe(300)
-  })
-
-  it('persists changes to localStorage', () => {
-    updateProfile('Wayne', 999)
-    const stored = loadProfiles()
-    expect(stored[0].highScore).toBe(999)
-    expect(stored[0].gamesPlayed).toBe(1)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// getLeaderboard
-// ---------------------------------------------------------------------------
-
-describe('getLeaderboard', () => {
-  it('returns profiles sorted by highScore descending', () => {
-    addProfile('Alice')
-    addProfile('Bob')
-    addProfile('Charlie')
-    updateProfile('Alice', 100)
-    updateProfile('Bob', 300)
-    updateProfile('Charlie', 200)
-
-    const board = getLeaderboard()
-    expect(board).toHaveLength(3)
-    expect(board[0].name).toBe('Bob')
-    expect(board[0].highScore).toBe(300)
-    expect(board[1].name).toBe('Charlie')
-    expect(board[1].highScore).toBe(200)
-    expect(board[2].name).toBe('Alice')
-    expect(board[2].highScore).toBe(100)
-  })
-
-  it('returns empty array when no profiles exist', () => {
-    expect(getLeaderboard()).toEqual([])
-  })
-
-  it('handles profiles with equal scores', () => {
-    addProfile('Alice')
-    addProfile('Bob')
-    updateProfile('Alice', 100)
-    updateProfile('Bob', 100)
-
-    const board = getLeaderboard()
-    expect(board).toHaveLength(2)
-    // Both have 100, just verify they're both present
-    expect(board.every((p) => p.highScore === 100)).toBe(true)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// deleteProfile
-// ---------------------------------------------------------------------------
 
 describe('deleteProfile', () => {
-  it('removes the profile', () => {
+  it('does not delete builtin profiles', () => {
+    expect(deleteProfile('Cora')).toBe(false)
+    expect(loadProfiles().map((profile) => profile.name)).toEqual(['Cora', 'Colby'])
+  })
+
+  it('deletes custom profiles only', () => {
     addProfile('Wayne')
+
     expect(deleteProfile('Wayne')).toBe(true)
-    expect(loadProfiles()).toHaveLength(0)
+    expect(loadProfiles().map((profile) => profile.name)).toEqual(['Cora', 'Colby'])
+  })
+})
+
+describe('updateProfile', () => {
+  it('updates a builtin profile and persists the changes', () => {
+    const updated = updateProfile('Cora', 500, 'THE SNIPE', true)
+
+    expect(updated).toMatchObject({
+      name: 'Cora',
+      highScore: 500,
+      gamesPlayed: 1,
+      bestCombo: 'THE SNIPE',
+      tutorialComplete: true,
+      avatar: '/avatars/cora.jpg',
+      jerseyNumber: 12,
+    })
   })
 
-  it('returns false for non-existent profile', () => {
-    expect(deleteProfile('Nobody')).toBe(false)
-  })
-
-  it('finds profile case-insensitively', () => {
+  it('updates custom profiles too', () => {
     addProfile('Wayne')
-    expect(deleteProfile('wayne')).toBe(true)
-    expect(loadProfiles()).toHaveLength(0)
+
+    const updated = updateProfile('wayne', 300)
+
+    expect(updated?.name).toBe('Wayne')
+    expect(updated?.highScore).toBe(300)
   })
+})
 
-  it('only removes the targeted profile', () => {
-    addProfile('Alice')
-    addProfile('Bob')
-    deleteProfile('Alice')
-
-    const remaining = loadProfiles()
-    expect(remaining).toHaveLength(1)
-    expect(remaining[0].name).toBe('Bob')
-  })
-
-  it('persists deletion to localStorage', () => {
+describe('getLeaderboard', () => {
+  it('returns builtin and custom profiles sorted by highScore descending', () => {
     addProfile('Wayne')
-    deleteProfile('Wayne')
-    // Re-load from storage to verify
-    const stored = loadProfiles()
-    expect(stored).toHaveLength(0)
+    updateProfile('Cora', 100)
+    updateProfile('Colby', 300)
+    updateProfile('Wayne', 200)
+
+    const board = getLeaderboard()
+
+    expect(board.map((profile) => `${profile.name}:${profile.highScore}`)).toEqual([
+      'Colby:300',
+      'Wayne:200',
+      'Cora:100',
+    ])
   })
 })

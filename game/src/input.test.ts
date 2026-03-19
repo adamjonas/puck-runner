@@ -17,25 +17,25 @@ function makeTarget(
 
 describe('isInteractiveEventTarget', () => {
   it('returns true for buttons', () => {
-    expect(isInteractiveEventTarget(makeTarget('button') as EventTarget)).toBe(true)
+    expect(isInteractiveEventTarget(makeTarget('button') as unknown as EventTarget)).toBe(true)
   })
 
   it('returns true for descendants of interactive elements', () => {
     const button = makeTarget('button')
     const child = makeTarget('span', button)
 
-    expect(isInteractiveEventTarget(child as EventTarget)).toBe(true)
+    expect(isInteractiveEventTarget(child as unknown as EventTarget)).toBe(true)
   })
 
   it('returns true for content-editable elements', () => {
-    expect(isInteractiveEventTarget(makeTarget('div', null, true) as EventTarget)).toBe(true)
+    expect(isInteractiveEventTarget(makeTarget('div', null, true) as unknown as EventTarget)).toBe(true)
   })
 
   it('returns false for non-interactive elements', () => {
     const wrapper = makeTarget('div')
     const child = makeTarget('span', wrapper)
 
-    expect(isInteractiveEventTarget(child as EventTarget)).toBe(false)
+    expect(isInteractiveEventTarget(child as unknown as EventTarget)).toBe(false)
   })
 
   it('returns false for null targets', () => {
@@ -45,20 +45,20 @@ describe('isInteractiveEventTarget', () => {
 
 describe('shouldSuppressGlobalKeydown', () => {
   it('suppresses Enter on interactive elements', () => {
-    expect(shouldSuppressGlobalKeydown(makeTarget('button') as EventTarget, 'Enter')).toBe(true)
+    expect(shouldSuppressGlobalKeydown(makeTarget('button') as unknown as EventTarget, 'Enter')).toBe(true)
   })
 
   it('suppresses Space on interactive elements', () => {
-    expect(shouldSuppressGlobalKeydown(makeTarget('button') as EventTarget, ' ')).toBe(true)
+    expect(shouldSuppressGlobalKeydown(makeTarget('button') as unknown as EventTarget, ' ')).toBe(true)
   })
 
   it('does not suppress gameplay keys on interactive elements', () => {
-    expect(shouldSuppressGlobalKeydown(makeTarget('button') as EventTarget, 'ArrowLeft')).toBe(false)
-    expect(shouldSuppressGlobalKeydown(makeTarget('button') as EventTarget, 's')).toBe(false)
+    expect(shouldSuppressGlobalKeydown(makeTarget('button') as unknown as EventTarget, 'ArrowLeft')).toBe(false)
+    expect(shouldSuppressGlobalKeydown(makeTarget('button') as unknown as EventTarget, 's')).toBe(false)
   })
 
   it('does not suppress Enter on non-interactive elements', () => {
-    expect(shouldSuppressGlobalKeydown(makeTarget('div') as EventTarget, 'Enter')).toBe(false)
+    expect(shouldSuppressGlobalKeydown(makeTarget('div') as unknown as EventTarget, 'Enter')).toBe(false)
   })
 })
 
