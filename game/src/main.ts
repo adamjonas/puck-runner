@@ -5,7 +5,7 @@ import { createObstaclePool, spawnObstacle, updateObstacles, checkCollisions } f
 import { createCoinPool, spawnCoins, updateCoins, collectCoins } from './coins'
 import { ComboDetector } from './combos'
 import type { GameEvent } from './combos'
-import { initAudio, playSound } from './audio'
+import { initAudio, playSound, muteAudio, unmuteAudio } from './audio'
 import { loadProfiles, updateProfile } from './profiles'
 import { Announcer, announceGameStart, announceFirstCoin, announceMultiplier5x, announceDekeSuccess, announceCombo, announceHitObstacle, announceGameOver, announceNewHighScore, announceSpeedMilestone, announceLifeLost, announceDekeUnlocked } from './announcer'
 import { createOverlay, updateOverlay } from './ui-overlay'
@@ -68,6 +68,7 @@ function update(now: number, dt: number): void {
   if (state.screen === 'countdown') {
     if (now >= state.countdownEnd) {
       state.beginPlaying()
+      unmuteAudio()
       playSound('go')
       announceGameStart(announcer)
       firstCoinAnnounced = false
@@ -116,6 +117,7 @@ function update(now: number, dt: number): void {
         announceLifeLost(announcer)
       } else {
         playSound('game_over')
+        muteAudio() // silence after game over sound
         announceGameOver(announcer)
         if (state.score >= state.highScore && state.score > 0) {
           announceNewHighScore(announcer)

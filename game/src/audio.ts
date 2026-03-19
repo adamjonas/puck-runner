@@ -30,12 +30,25 @@ export function initAudio(): void {
   }
 }
 
+let muted = false
+
+/** Mute all sound effects. */
+export function muteAudio(): void {
+  muted = true
+}
+
+/** Unmute sound effects. */
+export function unmuteAudio(): void {
+  muted = false
+}
+
 /**
  * Play a named sound effect.
  * Silently no-ops if AudioContext is not yet initialised or if
  * the concurrent sound limit has been reached.
  */
 export function playSound(name: SoundName): void {
+  if (muted) return
   if (!ctx || activeSounds >= MAX_CONCURRENT) return
 
   activeSounds++

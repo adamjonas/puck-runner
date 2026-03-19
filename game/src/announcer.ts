@@ -1,8 +1,8 @@
 /**
- * Hockey play-by-play announcer system.
+ * Hockey play-by-play announcer system with voice synthesis.
  *
- * Triggers voice-like sound effects via the existing `playSound()` and manages
- * on-screen text callouts with a priority queue so announcements don't overlap.
+ * Uses Web Speech API for spoken callouts and manages on-screen text
+ * with a priority queue so announcements don't overlap.
  */
 
 import { playSound, type SoundName } from './audio'
@@ -15,60 +15,87 @@ interface QueuedAnnouncement {
   text: string
   sound: SoundName
   priority: number // 1 (lowest) – 5 (highest)
+  voice: boolean // whether to speak it
 }
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Minimum gap between announcements in milliseconds. */
-const MIN_GAP_MS = 2000
-
-/** How long the text stays on screen (ms). */
+const MIN_GAP_MS = 1500
 const DISPLAY_DURATION_MS = 2000
+
+// ---------------------------------------------------------------------------
+// Voice synthesis
+// ---------------------------------------------------------------------------
+
+let voiceReady = false
+let selectedVoice: SpeechSynthesisVoice | null = null
+
+function initVoice(): void {
+  if (voiceReady) return
+  if (!('speechSynthesis' in window)) return
+
+  const pickVoice = () => {
+    const voices = speechSynthesis.getVoices()
+    // Prefer an English voice with "Daniel", "Alex", "Samantha", or any en- voice
+    selectedVoice =
+      voices.find(v => v.name.includes('Daniel') && v.lang.startsWith('en')) ||
+      voices.find(v => v.name.includes('Alex') && v.lang.startsWith('en')) ||
+      voices.find(v => v.name.includes('Samantha') && v.lang.startsWith('en')) ||
+      voices.find(v => v.lang.startsWith('en')) ||
+      voices[0] || null
+    voiceReady = true
+  }
+
+  if (speechSynthesis.getVoices().length > 0) {
+    pickVoice()
+  } else {
+    speechSynthesis.addEventListener('voiceschanged', pickVoice, { once: true })
+  }
+}
+
+function speak(text: string): void {
+  if (!voiceReady || !selectedVoice) return
+  // Strip emoji for cleaner speech
+  const clean = text.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F900}-\u{1F9FF}]|[⚡⏩🎯]/gu, '').trim()
+  if (!clean) return
+
+  // Cancel any current speech to avoid queue backup
+  speechSynthesis.cancel()
+
+  const utter = new SpeechSynthesisUtterance(clean)
+  utter.voice = selectedVoice
+  utter.rate = 1.3 // slightly fast for excitement
+  utter.pitch = 1.1
+  utter.volume = 0.8
+  speechSynthesis.speak(utter)
+}
 
 // ---------------------------------------------------------------------------
 // Announcer
 // ---------------------------------------------------------------------------
 
 export class Announcer {
-  /** Pending announcements sorted by priority (highest first). */
   private queue: QueuedAnnouncement[] = []
-
-  /** The announcement currently being displayed. */
   private current: QueuedAnnouncement | null = null
-
-  /** Timestamp when the current announcement was shown. */
   private currentStartTime = 0
-
-  /** Earliest time the next announcement is allowed to appear. */
   private nextAllowedTime = 0
 
-  // -----------------------------------------------------------------------
-  // Public API
-  // -----------------------------------------------------------------------
+  constructor() {
+    initVoice()
+  }
 
-  /**
-   * Enqueue an announcement.
-   *
-   * @param text    Text to display on screen.
-   * @param sound   Sound effect to play (from audio.ts).
-   * @param priority 1–5 (5 = highest). Defaults to 2.
-   */
-  announce(text: string, sound: SoundName, priority = 2): void {
-    const entry: QueuedAnnouncement = { text, sound, priority }
+  announce(text: string, sound: SoundName, priority = 2, voice = true): void {
+    const entry: QueuedAnnouncement = { text, sound, priority, voice }
 
-    // If a higher-priority announcement arrives while a lower-priority one
-    // is currently showing, interrupt it immediately.
-    if (
-      this.current &&
-      priority > this.current.priority
-    ) {
+    // Higher priority interrupts current
+    if (this.current && priority > this.current.priority) {
       this.showAnnouncement(entry, performance.now())
       return
     }
 
-    // Insert into the queue maintaining descending priority order.
+    // Insert sorted by priority descending
     let inserted = false
     for (let i = 0; i < this.queue.length; i++) {
       if (priority > this.queue[i].priority) {
@@ -82,55 +109,44 @@ export class Announcer {
     }
   }
 
-  /**
-   * Call once per frame. Manages display timing and drains the queue.
-   */
   update(now: number): void {
-    // If the current announcement has expired, clear it.
     if (this.current && now >= this.currentStartTime + DISPLAY_DURATION_MS) {
       this.current = null
     }
 
-    // If nothing is showing and the cooldown has elapsed, pop next from queue.
     if (!this.current && this.queue.length > 0 && now >= this.nextAllowedTime) {
       const next = this.queue.shift()!
       this.showAnnouncement(next, now)
     }
   }
 
-  /**
-   * Returns the text of the current on-screen announcement, or `null` if
-   * nothing is being displayed.
-   */
   getCurrentText(): string | null {
     return this.current ? this.current.text : null
   }
 
-  /**
-   * Clear all pending announcements and the current display.
-   * Useful on game reset.
-   */
   clear(): void {
     this.queue = []
     this.current = null
     this.currentStartTime = 0
     this.nextAllowedTime = 0
+    if ('speechSynthesis' in window) {
+      speechSynthesis.cancel()
+    }
   }
-
-  // -----------------------------------------------------------------------
-  // Internal
-  // -----------------------------------------------------------------------
 
   private showAnnouncement(entry: QueuedAnnouncement, now: number): void {
     this.current = entry
     this.currentStartTime = now
     this.nextAllowedTime = now + MIN_GAP_MS
     playSound(entry.sound)
+    if (entry.voice) {
+      speak(entry.text)
+    }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Convenience helpers (random pick utilities for event callouts)
+// Convenience helpers
 // ---------------------------------------------------------------------------
 
 const DEKE_LINES = ['🏒 Sick deke!', '🔥 Filthy!', '✨ Silky smooth!']
@@ -140,19 +156,12 @@ function pick(arr: string[]): string {
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
-// ---------------------------------------------------------------------------
-// Pre-built announcement triggers
-//
-// These are optional convenience functions that main.ts can import and call
-// directly instead of manually calling `announcer.announce()`.
-// ---------------------------------------------------------------------------
-
 export function announceGameStart(a: Announcer): void {
   a.announce('🏒 Drop the puck!', 'go', 5)
 }
 
 export function announceFirstCoin(a: Announcer): void {
-  a.announce('Picking up speed! 🏒', 'coin', 2)
+  a.announce('💰 Nice!', 'coin', 2)
 }
 
 export function announceMultiplier5x(a: Announcer): void {
@@ -168,7 +177,7 @@ export function announceCombo(a: Announcer, comboName: string): void {
 }
 
 export function announceHitObstacle(a: Announcer): void {
-  a.announce(pick(HIT_LINES), 'hit', 2)
+  a.announce(pick(HIT_LINES), 'hit', 3)
 }
 
 export function announceGameOver(a: Announcer): void {
@@ -184,7 +193,7 @@ export function announceSpeedMilestone(a: Announcer): void {
 }
 
 export function announceLifeLost(a: Announcer): void {
-  a.announce('💔 Ooof!', 'life_lost', 3)
+  a.announce('💔 Ooof!', 'life_lost', 4) // bumped priority so it shows
 }
 
 export function announceDekeUnlocked(a: Announcer): void {
