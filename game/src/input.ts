@@ -7,9 +7,6 @@ import type { GameState } from './game-state'
  * Input flow:
  *   iPhone ──WS──▶ Vite relay ──WS──▶ InputManager ──▶ GameState
  *   Keyboard ──────────────────────────▶ InputManager ──▶ GameState
- *
- * Interpolation: stores last two input positions + timestamps.
- * On each render frame, lerps between them for smooth 30Hz→60fps.
  */
 
 interface InputSample {
@@ -18,8 +15,8 @@ interface InputSample {
   lane: Lane
   deke: boolean
   confidence: number
-  ts: number // local timestamp (performance.now())
-  serverTs: number // iPhone timestamp
+  ts: number
+  serverTs: number
 }
 
 export class InputManager {
@@ -31,13 +28,14 @@ export class InputManager {
   private prev: InputSample | null = null
   private curr: InputSample | null = null
 
-  // Input rate tracking
   private inputCount = 0
   private inputRateTimer = 0
   private _inputRate = 0
 
-  // Keyboard state
   private keyboardLane: Lane = 'center'
+
+  // Deke tracking
+  private prevDeke = false
 
   constructor(private state: GameState) {}
 
@@ -58,7 +56,7 @@ export class InputManager {
 
     this.ws.onopen = () => {
       console.log('[input] Connected to relay')
-      this.reconnectDelay = 1000 // reset backoff
+      this.reconnectDelay = 1000
     }
 
     this.ws.onmessage = (event) => {
@@ -82,14 +80,11 @@ export class InputManager {
       this.scheduleReconnect()
     }
 
-    this.ws.onerror = () => {
-      // onclose will fire after this
-    }
+    this.ws.onerror = () => {}
   }
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer !== null) return
-    console.log(`[input] Reconnecting in ${this.reconnectDelay}ms...`)
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay)
@@ -116,17 +111,34 @@ export class InputManager {
     this.state.confidence = input.confidence
     this.state.rawX = input.raw.x
     this.state.rawY = input.raw.y
-    this.state.latency = now - input.ts // approximate (clock skew exists)
+    this.state.latency = now - input.ts
 
-    // Update lane from tracker
-    if (input.confidence >= 0.5) {
+    if (input.confidence >= 0.5 && this.state.screen === 'playing') {
       this.state.setLane(input.lane)
+
+      // Deke: trigger on rising edge (false → true)
+      if (input.deke && !this.prevDeke) {
+        this.state.activateDeke(now)
+      }
+
+      // Stickhandling
+      this.state.stickhandlingActive = input.stickhandling.active
+      this.state.stickhandlingFrequency = input.stickhandling.frequency
+
+      if (input.stickhandling.active) {
+        if (this.state.stickhandlingStreakStart === 0) {
+          this.state.stickhandlingStreakStart = now
+        }
+      } else {
+        this.state.stickhandlingStreakStart = 0
+        this.state.silkyMittsAwarded = false
+      }
     }
 
+    this.prevDeke = input.deke
     this.inputCount++
   }
 
-  /** Interpolated raw position for rendering (30Hz→60fps) */
   getInterpolatedPosition(now: number): { x: number; y: number } | null {
     if (!this.curr) return null
     if (!this.prev) return { x: this.curr.x, y: this.curr.y }
@@ -143,7 +155,6 @@ export class InputManager {
     }
   }
 
-  /** Update input rate measurement (call once per second) */
   updateInputRate(now: number): void {
     if (now - this.inputRateTimer >= 1000) {
       this._inputRate = this.inputCount
@@ -152,12 +163,14 @@ export class InputManager {
     }
   }
 
-  /** Set up keyboard controls for testing without iPhone */
   setupKeyboard(): void {
     window.addEventListener('keydown', (e) => {
-      if (this.state.screen === 'title') {
+      // Start game from title or game over
+      if (this.state.screen === 'title' || this.state.screen === 'game_over') {
         if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault()
           this.state.start()
+          this.keyboardLane = 'center'
           return
         }
       }
@@ -166,14 +179,20 @@ export class InputManager {
 
       switch (e.key) {
         case 'ArrowLeft':
+          e.preventDefault()
           if (this.keyboardLane === 'right') this.keyboardLane = 'center'
           else if (this.keyboardLane === 'center') this.keyboardLane = 'left'
           this.state.setLane(this.keyboardLane)
           break
         case 'ArrowRight':
+          e.preventDefault()
           if (this.keyboardLane === 'left') this.keyboardLane = 'center'
           else if (this.keyboardLane === 'center') this.keyboardLane = 'right'
           this.state.setLane(this.keyboardLane)
+          break
+        case 'ArrowDown':
+          e.preventDefault()
+          this.state.activateDeke(performance.now())
           break
       }
     })

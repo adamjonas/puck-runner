@@ -9,11 +9,58 @@ describe('GameState', () => {
     expect(state.avatarX).toBe(0.5)
   })
 
-  it('transitions to playing on start()', () => {
+  it('transitions to countdown on start(), then playing', () => {
     const state = new GameState()
     state.start()
+    expect(state.screen).toBe('countdown')
+    expect(state.countdownEnd).toBeGreaterThan(0)
+
+    state.beginPlaying()
     expect(state.screen).toBe('playing')
     expect(state.startTime).toBeGreaterThan(0)
+  })
+
+  it('tracks score, lives, and multiplier', () => {
+    const state = new GameState()
+    state.start()
+    state.beginPlaying()
+
+    state.collectCoin()
+    expect(state.score).toBe(10)
+
+    state.loseLife()
+    expect(state.lives).toBe(2)
+
+    // Build a streak for multiplier
+    for (let i = 0; i < 10; i++) state.collectCoin()
+    expect(state.multiplier).toBe(2)
+  })
+
+  it('activates deke with cooldown', () => {
+    const state = new GameState()
+    const now = performance.now()
+
+    expect(state.activateDeke(now)).toBe(true)
+    expect(state.dekeActive).toBe(true)
+
+    // Can't deke again during cooldown
+    expect(state.activateDeke(now + 100)).toBe(false)
+
+    // Can deke after cooldown
+    expect(state.activateDeke(now + GameState.DEKE_COOLDOWN_MS + 1)).toBe(true)
+  })
+
+  it('ends game when lives reach zero', () => {
+    const state = new GameState()
+    state.start()
+    state.beginPlaying()
+    state.score = 100
+
+    state.loseLife()
+    state.loseLife()
+    state.loseLife()
+    expect(state.screen).toBe('game_over')
+    expect(state.highScore).toBe(100)
   })
 
   it('sets lane and target position', () => {
