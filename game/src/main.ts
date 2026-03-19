@@ -8,7 +8,7 @@ import type { GameEvent } from './combos'
 import { initAudio, playSound, muteAudio, unmuteAudio } from './audio'
 import { loadProfiles, updateProfile } from './profiles'
 import { Announcer, announceGameStart, announceFirstCoin, announceMultiplier5x, announceDekeSuccess, announceCombo, announceGameOver, announceNewHighScore, announceSpeedMilestone, announceLifeLost, announceDekeUnlocked } from './announcer'
-import { createOverlay, updateOverlay } from './ui-overlay'
+import { OverlayController } from './ui-overlay'
 
 const canvas = document.getElementById('game') as HTMLCanvasElement
 
@@ -17,6 +17,16 @@ const renderer = new Renderer(canvas)
 const input = new InputManager(state)
 const comboDetector = new ComboDetector()
 const announcer = new Announcer()
+const startNewRun = (now: number) => {
+  state.start(now)
+}
+const returnToMainMenu = () => {
+  state.reset()
+}
+const overlay = new OverlayController({
+  onReplay: () => startNewRun(performance.now()),
+  onMenu: returnToMainMenu,
+})
 
 // Load high score from profiles
 const profiles = loadProfiles()
@@ -31,9 +41,6 @@ state.coins = createCoinPool()
 // Connect and set up input
 input.connect()
 input.setupKeyboard()
-
-// Create UI overlay
-createOverlay()
 
 // Init audio on first interaction
 let audioReady = false
@@ -51,31 +58,20 @@ let lastTime = performance.now()
 let frameCount = 0
 let fpsTimer = 0
 
-// Gameplay timers
-let lastSurvivalTick = 0
-let lastStickhandlingTick = 0
-let lastSpeedMilestone = 1.0
-let firstCoinAnnounced = false
-let dekeUnlockAnnounced = false
-let onFireAnnounced = false
-
 // Ball-lost grace period
 const BALL_LOST_GRACE_MS = 1000
 
 function update(now: number, dt: number): void {
+  state.syncTime(now)
   const viewportHeight = canvas.clientHeight || window.innerHeight || 1
 
   // Countdown → playing transition
   if (state.screen === 'countdown') {
     if (now >= state.countdownEnd) {
-      state.beginPlaying()
+      state.beginPlaying(now)
       unmuteAudio()
       playSound('go')
       announceGameStart(announcer)
-      firstCoinAnnounced = false
-      dekeUnlockAnnounced = false
-      onFireAnnounced = false
-      lastSpeedMilestone = 1.0
     } else {
       const remaining = Math.ceil((state.countdownEnd - now) / 1000)
       const prev = Math.ceil((state.countdownEnd - (now - dt)) / 1000)
@@ -140,9 +136,9 @@ function update(now: number, dt: number): void {
     const collected = collectCoins(state)
     if (collected > 0) {
       playSound('coin')
-      if (!firstCoinAnnounced) {
+      if (!state.run.firstCoinAnnounced) {
         announceFirstCoin(announcer)
-        firstCoinAnnounced = true
+        state.run.firstCoinAnnounced = true
       }
       for (let i = 0; i < collected; i++) {
         events.push({ type: 'coin_collected', time: now, lane: state.lane })
@@ -150,9 +146,9 @@ function update(now: number, dt: number): void {
     }
 
     if (state.multiplier < 5) {
-      onFireAnnounced = false
-    } else if (!onFireAnnounced) {
-      onFireAnnounced = true
+      state.run.onFireAnnounced = false
+    } else if (!state.run.onFireAnnounced) {
+      state.run.onFireAnnounced = true
       announceMultiplier5x(announcer)
     }
 
@@ -167,10 +163,10 @@ function update(now: number, dt: number): void {
 
     // Stickhandling scoring
     if (state.stickhandlingActive && state.screen === 'playing') {
-      if (now - lastStickhandlingTick >= 1000) {
+      if (now - state.run.lastStickhandlingTick >= 1000) {
         const rate = state.stickhandlingFrequency >= 4.0 ? 10 : 5
         state.addScore(rate)
-        lastStickhandlingTick = now
+        state.run.lastStickhandlingTick = now
       }
 
       // Silky Mitts check
@@ -186,13 +182,13 @@ function update(now: number, dt: number): void {
         playSound('silky_mitts')
       }
     } else {
-      lastStickhandlingTick = now
+      state.run.lastStickhandlingTick = now
     }
 
     // Survival bonus: +1 point per second
-    if (now - lastSurvivalTick >= 1000) {
+    if (now - state.run.lastSurvivalTick >= 1000) {
       state.score += 1
-      lastSurvivalTick = now
+      state.run.lastSurvivalTick = now
     }
 
     // Deke active state
@@ -201,14 +197,14 @@ function update(now: number, dt: number): void {
     }
 
     // Speed milestone announcements
-    if (state.speed >= lastSpeedMilestone + 0.5) {
-      lastSpeedMilestone = Math.floor(state.speed * 2) / 2
+    if (state.speed >= state.run.lastSpeedMilestone + 0.5) {
+      state.run.lastSpeedMilestone = Math.floor(state.speed * 2) / 2
       announceSpeedMilestone(announcer)
     }
 
     // Deke unlock announcement
-    if (state.isDekeUnlocked && !dekeUnlockAnnounced) {
-      dekeUnlockAnnounced = true
+    if (state.isDekeUnlocked && !state.run.dekeUnlockAnnounced) {
+      state.run.dekeUnlockAnnounced = true
       announceDekeUnlocked(announcer)
     }
   }
@@ -245,7 +241,7 @@ function gameLoop(now: number): void {
 
   update(now, dt)
   renderer.render(state, dt)
-  updateOverlay(state, announcer)
+  overlay.update(state, announcer)
 
   requestAnimationFrame(gameLoop)
 }

@@ -9,8 +9,6 @@ const PLAYER_Y = 0.75
 const HIT_THRESHOLD = 0.05
 const MIN_SPAWN_INTERVAL = 500 // ms at current speed
 
-let lastSpawnTime = 0
-
 export function createObstaclePool(): Obstacle[] {
   const pool: Obstacle[] = []
   for (let i = 0; i < POOL_SIZE; i++) {
@@ -66,7 +64,7 @@ export function spawnObstacle(state: GameState, now: number): void {
 
   // Enforce minimum interval
   const interval = MIN_SPAWN_INTERVAL / state.speed
-  if (now - lastSpawnTime < interval) return
+  if (now - state.run.lastObstacleSpawnTime < interval) return
 
   // Determine spawn timing based on elapsed time
   const elapsed = state.elapsed / 1000 // in seconds
@@ -76,12 +74,12 @@ export function spawnObstacle(state: GameState, now: number): void {
     // First 30 seconds: ~1 obstacle every 3-4 seconds
     // With 60fps calls, we need probability per frame
     const targetInterval = 3000 + Math.random() * 1000 // 3-4 seconds in ms
-    if (now - lastSpawnTime < targetInterval) return
+    if (now - state.run.lastObstacleSpawnTime < targetInterval) return
     spawnChance = 1 // guaranteed if interval passed
   } else {
     // After 30s: density increases with speed
     const targetInterval = Math.max(800, 2500 / state.speed)
-    if (now - lastSpawnTime < targetInterval) return
+    if (now - state.run.lastObstacleSpawnTime < targetInterval) return
     spawnChance = 1
   }
 
@@ -176,7 +174,7 @@ export function spawnObstacle(state: GameState, now: number): void {
     obs.movingSpeed = 0
   }
 
-  lastSpawnTime = now
+  state.run.lastObstacleSpawnTime = now
 }
 
 export function updateObstacles(state: GameState, dt: number, viewportHeight: number): void {

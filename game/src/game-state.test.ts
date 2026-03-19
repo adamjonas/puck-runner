@@ -11,28 +11,28 @@ describe('GameState', () => {
 
   it('transitions to countdown on start(), then playing', () => {
     const state = new GameState()
-    state.start()
+    state.start(1000)
     expect(state.screen).toBe('countdown')
     expect(state.countdownEnd).toBeGreaterThan(0)
 
-    state.beginPlaying()
+    state.beginPlaying(4000)
     expect(state.screen).toBe('playing')
     expect(state.startTime).toBeGreaterThan(0)
   })
 
   it('tracks score, lives, and multiplier', () => {
     const state = new GameState()
-    state.start()
-    state.beginPlaying()
+    state.start(1000)
+    state.beginPlaying(4000)
 
-    state.collectCoin()
+    state.collectCoin(4100)
     expect(state.score).toBe(10)
 
     state.loseLife()
     expect(state.lives).toBe(2)
 
     // Build a streak for multiplier
-    for (let i = 0; i < 10; i++) state.collectCoin()
+    for (let i = 0; i < 10; i++) state.collectCoin(4200 + i)
     expect(state.multiplier).toBe(2)
   })
 
@@ -53,8 +53,8 @@ describe('GameState', () => {
 
   it('ends game when lives reach zero', () => {
     const state = new GameState()
-    state.start()
-    state.beginPlaying()
+    state.start(1000)
+    state.beginPlaying(4000)
     state.score = 100
 
     state.loseLife()
@@ -64,28 +64,53 @@ describe('GameState', () => {
     expect(state.highScore).toBe(100)
   })
 
+  it('confirms replay from game over after holding right long enough', () => {
+    const state = new GameState()
+    state.screen = 'game_over'
+    state.syncTime(5000)
+
+    expect(state.updateGameOverAction('right', 0.9)).toBeNull()
+    state.syncTime(5000 + GameState.GAME_OVER_ACTION_HOLD_MS - 1)
+    expect(state.updateGameOverAction('right', 0.9)).toBeNull()
+
+    state.syncTime(5000 + GameState.GAME_OVER_ACTION_HOLD_MS)
+    expect(state.updateGameOverAction('right', 0.9)).toBe('replay')
+  })
+
+  it('clears game over action progress when the ball returns to center', () => {
+    const state = new GameState()
+    state.screen = 'game_over'
+    state.syncTime(5000)
+    state.updateGameOverAction('left', 0.9)
+
+    state.syncTime(5200)
+    expect(state.updateGameOverAction('center', 0.9)).toBeNull()
+    expect(state.gameOverAction).toBeNull()
+    expect(state.gameOverActionProgress).toBe(0)
+  })
+
   it('sets lane and target position', () => {
     const state = new GameState()
-    state.setLane('left')
+    state.setLane('left', 1000)
     expect(state.lane).toBe('left')
     expect(state.targetAvatarX).toBe(GameState.LANE_X.left)
 
-    state.setLane('right')
+    state.setLane('right', 1200)
     expect(state.lane).toBe('right')
     expect(state.targetAvatarX).toBe(GameState.LANE_X.right)
   })
 
   it('does not update target if lane unchanged', () => {
     const state = new GameState()
-    state.setLane('center')
+    state.setLane('center', 1000)
     const before = state.targetAvatarX
-    state.setLane('center')
+    state.setLane('center', 1200)
     expect(state.targetAvatarX).toBe(before)
   })
 
   it('smoothly transitions avatar position toward target', () => {
     const state = new GameState()
-    state.setLane('left')
+    state.setLane('left', 1000)
     // Avatar starts at 0.5, target is 0.2
     expect(state.avatarX).toBe(0.5)
 
@@ -105,8 +130,8 @@ describe('GameState', () => {
 
   it('resets all state', () => {
     const state = new GameState()
-    state.start()
-    state.setLane('right')
+    state.start(1000)
+    state.setLane('right', 1100)
     state.confidence = 0.9
     state.reset()
 

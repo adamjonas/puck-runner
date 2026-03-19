@@ -31,7 +31,22 @@ export interface Coin {
   collected: boolean
 }
 
+export interface RunState {
+  lastSurvivalTick: number
+  lastStickhandlingTick: number
+  lastSpeedMilestone: number
+  firstCoinAnnounced: boolean
+  dekeUnlockAnnounced: boolean
+  onFireAnnounced: boolean
+  lastObstacleSpawnTime: number
+  lastCoinSpawnTime: number
+}
+
+export type GameOverAction = 'menu' | 'replay' | null
+
 export class GameState {
+  private _now = 0
+
   // Screen state
   screen: GameScreenState = 'title'
 
@@ -99,10 +114,18 @@ export class GameState {
   // Player profile
   playerName = ''
 
+  // Game-over gesture selection
+  gameOverAction: GameOverAction = null
+  gameOverActionStartedAt = 0
+  gameOverActionProgress = 0
+
   // Debug
   fps = 0
   inputRate = 0
   latency = 0
+
+  // Per-run timers and flags
+  run: RunState = GameState.createRunState()
 
   // Lane positions (X coordinate for each lane center)
   static readonly LANE_X: Record<Lane, number> = {
@@ -113,6 +136,28 @@ export class GameState {
 
   static readonly LANE_TRANSITION_SPEED = 0.005 // ~200ms full transition
   static readonly LANE_TRANSITION_MS = 200
+  static readonly GAME_OVER_ACTION_HOLD_MS = 700
+
+  static createRunState(): RunState {
+    return {
+      lastSurvivalTick: 0,
+      lastStickhandlingTick: 0,
+      lastSpeedMilestone: 1.0,
+      firstCoinAnnounced: false,
+      dekeUnlockAnnounced: false,
+      onFireAnnounced: false,
+      lastObstacleSpawnTime: 0,
+      lastCoinSpawnTime: 0,
+    }
+  }
+
+  get now(): number {
+    return this._now
+  }
+
+  syncTime(now: number): void {
+    this._now = now
+  }
 
   get currentSpeed(): number {
     return GameState.BASE_SCROLL_SPEED * this.speed
@@ -126,15 +171,15 @@ export class GameState {
   }
 
   get isDekeReady(): boolean {
-    return this.isDekeUnlocked && performance.now() > this.dekeCooldownUntil
+    return this.isDekeUnlocked && this.now > this.dekeCooldownUntil
   }
 
   get isDekeInvincible(): boolean {
-    return performance.now() < this.dekeInvincibleUntil
+    return this.now < this.dekeInvincibleUntil
   }
 
   get isLaneTransitioning(): boolean {
-    return performance.now() < this.transitionEnd
+    return this.now < this.transitionEnd
   }
 
   reset(): void {
@@ -165,31 +210,41 @@ export class GameState {
     this.lastCoinCollectTime = 0
     this.comboText = ''
     this.comboTextUntil = 0
+    this.gameOverAction = null
+    this.gameOverActionStartedAt = 0
+    this.gameOverActionProgress = 0
+    this.run = GameState.createRunState()
     for (const o of this.obstacles) { o.active = false; o.passed = false; o.moving = false }
     for (const c of this.coins) { c.active = false; c.collected = false }
   }
 
-  start(): void {
+  start(now: number): void {
+    this.syncTime(now)
     this.reset()
     this.screen = 'countdown'
-    this.countdownEnd = performance.now() + 3000
+    this.countdownEnd = now + 3000
   }
 
-  beginPlaying(): void {
+  beginPlaying(now: number): void {
+    this.syncTime(now)
     this.screen = 'playing'
-    this.startTime = performance.now()
+    this.startTime = now
     this.elapsed = 0
+    this.run.lastSurvivalTick = now
+    this.run.lastStickhandlingTick = now
   }
 
-  setLane(lane: Lane): void {
+  setLane(lane: Lane, now: number): void {
+    this.syncTime(now)
     if (this.lane !== lane) {
       this.lane = lane
       this.targetAvatarX = GameState.LANE_X[lane]
-      this.transitionEnd = performance.now() + GameState.LANE_TRANSITION_MS
+      this.transitionEnd = now + GameState.LANE_TRANSITION_MS
     }
   }
 
   activateDeke(now: number): boolean {
+    this.syncTime(now)
     if (!this.isDekeUnlocked) return false
     if (now < this.dekeCooldownUntil) return false
     this.dekeActive = true
@@ -216,7 +271,8 @@ export class GameState {
     this.score += points * this.multiplier
   }
 
-  collectCoin(): void {
+  collectCoin(now: number): void {
+    this.syncTime(now)
     this.coinStreak++
     if (this.coinStreak >= GameState.STREAK_FOR_MULTIPLIER) {
       this.multiplier = Math.min(
@@ -226,7 +282,38 @@ export class GameState {
       this.coinStreak = 0
     }
     this.addScore(10)
-    this.lastCoinCollectTime = performance.now()
+    this.lastCoinCollectTime = now
+  }
+
+  updateGameOverAction(lane: Lane | null, confidence: number): GameOverAction | null {
+    if (this.screen !== 'game_over') {
+      this.gameOverAction = null
+      this.gameOverActionStartedAt = 0
+      this.gameOverActionProgress = 0
+      return null
+    }
+
+    if (confidence < 0.5 || lane === null || lane === 'center') {
+      this.gameOverAction = null
+      this.gameOverActionStartedAt = 0
+      this.gameOverActionProgress = 0
+      return null
+    }
+
+    const action: GameOverAction = lane === 'left' ? 'menu' : 'replay'
+    if (this.gameOverAction !== action) {
+      this.gameOverAction = action
+      this.gameOverActionStartedAt = this.now
+      this.gameOverActionProgress = 0
+      return null
+    }
+
+    const elapsed = this.now - this.gameOverActionStartedAt
+    this.gameOverActionProgress = Math.min(1, elapsed / GameState.GAME_OVER_ACTION_HOLD_MS)
+    if (this.gameOverActionProgress >= 1) {
+      return action
+    }
+    return null
   }
 
   breakStreak(): void {

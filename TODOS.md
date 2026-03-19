@@ -18,7 +18,7 @@
 
 - [ ] **First-time onboarding tutorial** — Step-by-step animated flow for new players explaining puck tracking setup, camera mounting, and basic controls. Currently new players only see text instructions. Effort: M (human: ~2 days / CC: ~20 min). Depends on: Core game stable.
 
-- [ ] **Game over celebration** — Better end-of-game experience: animated score counting, personal best callout, encouraging messages for short runs ("Nice try! You lasted Xs"), celebratory effects for high scores. Currently game over is flat text. Effort: S (CC: ~10 min). Depends on: Nothing.
+- [x] **Game over celebration** — Better end-of-game experience: animated score counting, personal best callout, encouraging messages for short runs ("Nice try! You lasted Xs"), celebratory effects for high scores. Currently game over is flat text. Effort: S (CC: ~10 min). Depends on: Nothing.
 
 - [ ] **Responsive text scaling** — Scale HUD text and overlays based on viewport size so the game is readable on small laptops (not just TVs). Use CSS clamp() or viewport units. Effort: S (CC: ~10 min). Depends on: Nothing.
 

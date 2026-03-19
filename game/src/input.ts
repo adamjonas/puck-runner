@@ -94,6 +94,7 @@ export class InputManager {
 
   private handleTrackingInput(input: TrackingInput): void {
     const now = performance.now()
+    this.state.syncTime(now)
 
     this.prev = this.curr
     this.curr = {
@@ -113,8 +114,25 @@ export class InputManager {
     this.state.rawY = input.raw.y
     this.state.latency = now - input.ts
 
+    if (this.state.screen === 'game_over') {
+      const action = this.state.updateGameOverAction(
+        input.confidence >= 0.5 ? input.lane : null,
+        input.confidence,
+      )
+      if (action === 'replay') {
+        this.keyboardLane = 'center'
+        this.state.start(now)
+      } else if (action === 'menu') {
+        this.keyboardLane = 'center'
+        this.state.reset()
+      }
+      this.prevDeke = input.deke
+      this.inputCount++
+      return
+    }
+
     if (input.confidence >= 0.5 && this.state.screen === 'playing') {
-      this.state.setLane(input.lane)
+      this.state.setLane(input.lane, now)
 
       // Deke: trigger on rising edge (false → true)
       if (input.deke && !this.prevDeke) {
@@ -165,11 +183,20 @@ export class InputManager {
 
   setupKeyboard(): void {
     window.addEventListener('keydown', (e) => {
+      if (this.state.screen === 'game_over') {
+        if (e.key === 'Escape' || e.key.toLowerCase() === 'm') {
+          e.preventDefault()
+          this.state.reset()
+          this.keyboardLane = 'center'
+          return
+        }
+      }
+
       // Start game from title or game over
       if (this.state.screen === 'title' || this.state.screen === 'game_over') {
         if (e.key === ' ' || e.key === 'Enter') {
           e.preventDefault()
-          this.state.start()
+          this.state.start(performance.now())
           this.keyboardLane = 'center'
           return
         }
@@ -182,13 +209,13 @@ export class InputManager {
           e.preventDefault()
           if (this.keyboardLane === 'right') this.keyboardLane = 'center'
           else if (this.keyboardLane === 'center') this.keyboardLane = 'left'
-          this.state.setLane(this.keyboardLane)
+          this.state.setLane(this.keyboardLane, performance.now())
           break
         case 'ArrowRight':
           e.preventDefault()
           if (this.keyboardLane === 'left') this.keyboardLane = 'center'
           else if (this.keyboardLane === 'center') this.keyboardLane = 'right'
-          this.state.setLane(this.keyboardLane)
+          this.state.setLane(this.keyboardLane, performance.now())
           break
         case 'ArrowDown':
           e.preventDefault()

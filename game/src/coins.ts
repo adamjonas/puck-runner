@@ -7,9 +7,6 @@ const LANES: Lane[] = ['left', 'center', 'right']
 const PLAYER_Y = 0.75
 const COLLECT_THRESHOLD = 0.05
 const COIN_VERTICAL_SPACING = 0.08
-const PASSED_Y = PLAYER_Y + COLLECT_THRESHOLD
-
-let lastSpawnTime = 0
 
 export function createCoinPool(): Coin[] {
   const pool: Coin[] = []
@@ -52,7 +49,7 @@ export function spawnCoins(state: GameState, now: number): void {
 
   // Spawn every 2-3 seconds
   const interval = 2000 + Math.random() * 1000
-  if (now - lastSpawnTime < interval) return
+  if (now - state.run.lastCoinSpawnTime < interval) return
 
   // Pick a lane that doesn't have an obstacle nearby
   const safeLanes = LANES.filter((l) => !laneHasObstacleNearby(state, l))
@@ -73,7 +70,7 @@ export function spawnCoins(state: GameState, now: number): void {
     coin.collected = false
   }
 
-  lastSpawnTime = now
+  state.run.lastCoinSpawnTime = now
 }
 
 export function updateCoins(state: GameState, dt: number, viewportHeight: number): void {
@@ -99,7 +96,7 @@ export function collectCoins(state: GameState): number {
     if (coin.lane !== state.lane) continue
 
     coin.collected = true
-    state.collectCoin()
+    state.collectCoin(state.now)
     collected++
   }
 

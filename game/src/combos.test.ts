@@ -9,8 +9,8 @@ describe('ComboDetector', () => {
   beforeEach(() => {
     detector = new ComboDetector()
     state = new GameState()
-    state.start()
-    state.beginPlaying()
+    state.start(1000)
+    state.beginPlaying(4000)
   })
 
   // ---------------------------------------------------------------------------
