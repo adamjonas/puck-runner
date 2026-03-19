@@ -856,7 +856,7 @@ export class Renderer {
     // Update ice scroll
     const iceMat = this.icePlane.material as THREE.MeshStandardMaterial
     if (iceMat.map) {
-      iceMat.map.offset.y = -this.scrollOffset * 0.05
+      iceMat.map.offset.y = this.scrollOffset * 0.05
       iceMat.map.needsUpdate = true
     }
 
