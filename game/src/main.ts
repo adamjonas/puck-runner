@@ -7,7 +7,7 @@ import { ComboDetector } from './combos'
 import type { GameEvent } from './combos'
 import { initAudio, playSound, muteAudio, unmuteAudio } from './audio'
 import { loadProfiles, updateProfile } from './profiles'
-import { Announcer, announceGameStart, announceFirstCoin, announceMultiplier5x, announceDekeSuccess, announceCombo, announceHitObstacle, announceGameOver, announceNewHighScore, announceSpeedMilestone, announceLifeLost, announceDekeUnlocked } from './announcer'
+import { Announcer, announceGameStart, announceFirstCoin, announceMultiplier5x, announceDekeSuccess, announceCombo, announceGameOver, announceNewHighScore, announceSpeedMilestone, announceLifeLost, announceDekeUnlocked } from './announcer'
 import { createOverlay, updateOverlay } from './ui-overlay'
 
 const canvas = document.getElementById('game') as HTMLCanvasElement
@@ -149,8 +149,9 @@ function update(now: number, dt: number): void {
       }
     }
 
-    // 5x multiplier announcement (one-shot)
-    if (state.multiplier >= 5 && !onFireAnnounced) {
+    if (state.multiplier < 5) {
+      onFireAnnounced = false
+    } else if (!onFireAnnounced) {
       onFireAnnounced = true
       announceMultiplier5x(announcer)
     }

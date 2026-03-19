@@ -13,7 +13,7 @@ import { playSound, type SoundName } from './audio'
 
 interface QueuedAnnouncement {
   text: string
-  sound: SoundName
+  sound: SoundName | null
   priority: number // 1 (lowest) – 5 (highest)
   voice: boolean // whether to speak it
 }
@@ -86,7 +86,7 @@ export class Announcer {
     initVoice()
   }
 
-  announce(text: string, sound: SoundName, priority = 2, voice = true): void {
+  announce(text: string, sound: SoundName | null, priority = 2, voice = true): void {
     const entry: QueuedAnnouncement = { text, sound, priority, voice }
 
     // Higher priority interrupts current
@@ -138,7 +138,9 @@ export class Announcer {
     this.current = entry
     this.currentStartTime = now
     this.nextAllowedTime = now + MIN_GAP_MS
-    playSound(entry.sound)
+    if (entry.sound) {
+      playSound(entry.sound)
+    }
     if (entry.voice) {
       speak(entry.text)
     }
@@ -157,11 +159,11 @@ function pick(arr: string[]): string {
 }
 
 export function announceGameStart(a: Announcer): void {
-  a.announce('🏒 Drop the puck!', 'go', 5)
+  a.announce('🏒 Drop the puck!', null, 5)
 }
 
 export function announceFirstCoin(a: Announcer): void {
-  a.announce('💰 Nice!', 'coin', 2)
+  a.announce('💰 Nice!', null, 2)
 }
 
 export function announceMultiplier5x(a: Announcer): void {
@@ -169,19 +171,19 @@ export function announceMultiplier5x(a: Announcer): void {
 }
 
 export function announceDekeSuccess(a: Announcer): void {
-  a.announce(pick(DEKE_LINES), 'deke', 3)
+  a.announce(pick(DEKE_LINES), null, 3)
 }
 
 export function announceCombo(a: Announcer, comboName: string): void {
-  a.announce(`⚡ ${comboName}! ⚡`, 'combo', 4)
+  a.announce(`⚡ ${comboName}! ⚡`, null, 4)
 }
 
 export function announceHitObstacle(a: Announcer): void {
-  a.announce(pick(HIT_LINES), 'hit', 3)
+  a.announce(pick(HIT_LINES), null, 3)
 }
 
 export function announceGameOver(a: Announcer): void {
-  a.announce('🏁 Game over!', 'game_over', 5)
+  a.announce('🏁 Game over!', null, 5)
 }
 
 export function announceNewHighScore(a: Announcer): void {
@@ -193,7 +195,7 @@ export function announceSpeedMilestone(a: Announcer): void {
 }
 
 export function announceLifeLost(a: Announcer): void {
-  a.announce('💔 Ooof!', 'life_lost', 4) // bumped priority so it shows
+  a.announce('💔 Ooof!', null, 4) // bumped priority so it shows
 }
 
 export function announceDekeUnlocked(a: Announcer): void {

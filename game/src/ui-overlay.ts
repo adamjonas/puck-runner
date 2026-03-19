@@ -47,6 +47,8 @@ let countdownOverlay: HTMLDivElement
 // Player select (within title overlay)
 let playerListEl: HTMLDivElement
 let selectedProfile: string | null = null
+let playerListDirty = true
+let titleVisibleLastFrame = false
 
 // Internal state for combo fade
 let lastComboText = ''
@@ -447,6 +449,16 @@ function renderPlayerSelect(): void {
 
   const profiles = loadProfiles()
 
+  if (profiles.length > 0) {
+    const selectedStillExists = selectedProfile !== null
+      && profiles.some((p) => p.name === selectedProfile)
+    if (!selectedStillExists) {
+      selectedProfile = profiles[0].name
+    }
+  } else {
+    selectedProfile = null
+  }
+
   // Label
   const label = div({
     fontFamily: FONT_TEXT,
@@ -477,6 +489,7 @@ function renderPlayerSelect(): void {
     btn.textContent = `${p.name}  (${p.highScore})`
     btn.addEventListener('click', () => {
       selectedProfile = p.name
+      playerListDirty = true
       renderPlayerSelect()
     })
     playerListEl.appendChild(btn)
@@ -526,6 +539,7 @@ function renderPlayerSelect(): void {
         const profile = addProfile(name)
         if (profile) {
           selectedProfile = profile.name
+          playerListDirty = true
         }
       }
       renderPlayerSelect()
@@ -539,6 +553,7 @@ function renderPlayerSelect(): void {
     input.addEventListener('blur', submit)
   })
   playerListEl.appendChild(addBtn)
+  playerListDirty = false
 }
 
 export function getSelectedProfile(): string | null {
@@ -551,14 +566,18 @@ export function getSelectedProfile(): string | null {
 
 export function updateOverlay(state: GameState, announcer: Announcer): void {
   const now = performance.now()
+  const isTitle = state.screen === 'title'
 
   // ----- Screen-level visibility -----
 
   // Title
-  if (state.screen === 'title') {
+  if (isTitle) {
     titleOverlay.style.opacity = '1'
     titleOverlay.style.pointerEvents = 'auto'
-    renderPlayerSelect()
+    if (!titleVisibleLastFrame || playerListDirty) {
+      renderPlayerSelect()
+    }
+    state.playerName = selectedProfile ?? ''
 
     // Show high score
     const hsEl = document.getElementById('overlay-high-score')
@@ -569,6 +588,7 @@ export function updateOverlay(state: GameState, announcer: Announcer): void {
     titleOverlay.style.opacity = '0'
     titleOverlay.style.pointerEvents = 'none'
   }
+  titleVisibleLastFrame = isTitle
 
   // Countdown
   if (state.screen === 'countdown') {
