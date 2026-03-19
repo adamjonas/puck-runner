@@ -43,11 +43,10 @@ final class WebSocketManager: ObservableObject {
 
     // MARK: - Init
 
-    override init() {
+    init() {
         let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
         self.session = URLSession(configuration: config)
-        super.init()
     }
 
     deinit {

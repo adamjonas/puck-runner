@@ -103,10 +103,11 @@ final class CameraManager: NSObject, ObservableObject {
             session.addOutput(output)
         }
 
-        // Set video orientation to landscape right (home button on right)
+        // Keep captured buffers in portrait camera space.
+        // The detector and preview each rotate into the app's landscape coordinate space explicitly.
         if let connection = output.connection(with: .video) {
             if connection.isVideoOrientationSupported {
-                connection.videoOrientation = .landscapeRight
+                connection.videoOrientation = .portrait
             }
         }
 

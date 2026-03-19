@@ -99,10 +99,9 @@ struct ContentView: View {
             ballDetector?.processFrame(pixelBuffer)
         }
 
-        ballDetector.onPositionUpdate = { [weak positionClassifier, weak webSocketManager, weak ballDetector] position, confidence in
+        ballDetector.onPositionUpdate = { [weak positionClassifier, weak webSocketManager] position, confidence in
             guard let classifier = positionClassifier,
-                  let ws = webSocketManager,
-                  let detector = ballDetector else { return }
+                  let ws = webSocketManager else { return }
 
             classifier.update(position: position, confidence: confidence)
 
@@ -141,18 +140,46 @@ struct CameraPreviewView: UIViewRepresentable {
     func makeUIView(context: Context) -> CameraPreviewUIView {
         let view = CameraPreviewUIView()
         view.previewLayer.session = session
-        view.previewLayer.videoGravity = .resizeAspectFill
         return view
     }
 
     func updateUIView(_ uiView: CameraPreviewUIView, context: Context) {
         uiView.previewLayer.session = session
+        uiView.setNeedsLayout()
     }
 }
 
 final class CameraPreviewUIView: UIView {
-    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
-    var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    let previewLayer = AVCaptureVideoPreviewLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
+        previewLayer.videoGravity = .resizeAspectFill
+        layer.addSublayer(previewLayer)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        // Keep the preview in portrait capture space, then rotate it into the app's landscape UI.
+        if let connection = previewLayer.connection, connection.isVideoOrientationSupported {
+            connection.videoOrientation = .portrait
+        }
+
+        previewLayer.setAffineTransform(.identity)
+        previewLayer.bounds = CGRect(origin: .zero, size: CGSize(width: bounds.height, height: bounds.width))
+        previewLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        previewLayer.setAffineTransform(CGAffineTransform(rotationAngle: -.pi / 2))
+    }
 }
 
 // MARK: - Tracking Overlay

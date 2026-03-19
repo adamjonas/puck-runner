@@ -196,6 +196,13 @@ struct CalibrationView: View {
         }
     }
 
+    private func stepColor(for step: CalibrationStep) -> Color {
+        if showCompleted { return .green }
+        if step == currentStep { return .accentColor }
+        if step.rawValue < currentStep.rawValue { return .green }
+        return Color(.systemGray4)
+    }
+
     // MARK: - Capture Logic
 
     private func startCapture() {
@@ -252,8 +259,6 @@ struct CalibrationView: View {
         let leftCenter = (lx + cx) / 2.0
         let rightCenter = (cx + rx) / 2.0
 
-        let leftGap = cx - lx
-        let rightGap = rx - cx
         let deadZoneWidth: CGFloat = 0.03  // ~3% dead zone
 
         positionClassifier.leftBoundary = leftCenter
