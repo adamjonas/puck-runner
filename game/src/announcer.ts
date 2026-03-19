@@ -133,8 +133,8 @@ export class Announcer {
 // Convenience helpers (random pick utilities for event callouts)
 // ---------------------------------------------------------------------------
 
-const DEKE_LINES = ['What a move!', 'He dekes!', 'Silky smooth!']
-const HIT_LINES = ['Ouch!', 'Big hit!', "He'll feel that one!"]
+const DEKE_LINES = ['🏒 Sick deke!', '🔥 Filthy!', '✨ Silky smooth!']
+const HIT_LINES = ['💥 Ouch!', '😵 Big hit!', '🧱 Boards!']
 
 function pick(arr: string[]): string {
   return arr[Math.floor(Math.random() * arr.length)]
@@ -148,15 +148,15 @@ function pick(arr: string[]): string {
 // ---------------------------------------------------------------------------
 
 export function announceGameStart(a: Announcer): void {
-  a.announce("Let's drop the puck!", 'go', 5)
+  a.announce('🏒 Drop the puck!', 'go', 5)
 }
 
 export function announceFirstCoin(a: Announcer): void {
-  a.announce("He's picking up speed!", 'coin', 2)
+  a.announce('Picking up speed! 🏒', 'coin', 2)
 }
 
 export function announceMultiplier5x(a: Announcer): void {
-  a.announce("He's on fire!", 'combo', 3)
+  a.announce('🔥 ON FIRE! 🔥', 'combo', 3)
 }
 
 export function announceDekeSuccess(a: Announcer): void {
@@ -164,7 +164,7 @@ export function announceDekeSuccess(a: Announcer): void {
 }
 
 export function announceCombo(a: Announcer, comboName: string): void {
-  a.announce(`COMBO! ${comboName}!`, 'combo', 4)
+  a.announce(`⚡ ${comboName}! ⚡`, 'combo', 4)
 }
 
 export function announceHitObstacle(a: Announcer): void {
@@ -172,21 +172,21 @@ export function announceHitObstacle(a: Announcer): void {
 }
 
 export function announceGameOver(a: Announcer): void {
-  a.announce("And that's the game!", 'game_over', 5)
+  a.announce('🏁 Game over!', 'game_over', 5)
 }
 
 export function announceNewHighScore(a: Announcer): void {
-  a.announce('NEW HIGH SCORE!', 'silky_mitts', 5)
+  a.announce('🏆 NEW HIGH SCORE! 🏆', 'silky_mitts', 5)
 }
 
 export function announceSpeedMilestone(a: Announcer): void {
-  a.announce('Picking up the pace!', 'coin', 2)
+  a.announce('⏩ Faster!', 'coin', 2)
 }
 
 export function announceLifeLost(a: Announcer): void {
-  a.announce("He's shaken up!", 'life_lost', 3)
+  a.announce('💔 Ooof!', 'life_lost', 3)
 }
 
 export function announceDekeUnlocked(a: Announcer): void {
-  a.announce('Deke is ready!', 'deke', 4)
+  a.announce('🎯 Deke unlocked!', 'deke', 4)
 }

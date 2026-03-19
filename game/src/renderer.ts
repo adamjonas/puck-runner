@@ -94,24 +94,8 @@ export class Renderer {
   private iceParticles: Particle[] = []
   private coinParticles: Particle[] = []
 
-  // HUD overlay
-  private hudContainer!: HTMLDivElement
-  private hudScore!: HTMLDivElement
-  private hudLives!: HTMLDivElement
-  private hudMultiplier!: HTMLDivElement
-  private hudDeke!: HTMLDivElement
-  private hudCombo!: HTMLDivElement
-  private hudSpeed!: HTMLDivElement
-  private hudStickhandling!: HTMLDivElement
-
-  // Overlay screens
-  private overlayContainer!: HTMLDivElement
-
   // Title-screen camera orbit
   private titleAngle = 0
-
-  // Track canvas parent for DOM injection
-  private parentEl: HTMLElement
 
   constructor(canvas: HTMLCanvasElement) {
     // Try WebGL
@@ -158,11 +142,6 @@ export class Renderer {
     this.buildObstaclePool()
     this.buildCoinPool()
     this.buildParticlePool()
-
-    // HUD / overlays
-    this.parentEl = canvas.parentElement || document.body
-    this.buildHUD()
-    this.buildOverlay()
 
     // Resize
     window.addEventListener('resize', () => this.onResize())
@@ -304,58 +283,51 @@ export class Renderer {
   private buildAvatar(): void {
     this.avatarGroup = new THREE.Group()
 
-    // Body — cylinder
-    const bodyGeo = new THREE.CylinderGeometry(0.5, 0.6, 1.6, 12)
-    const bodyMat = new THREE.MeshStandardMaterial({
+    // Core sphere — glowing energy ball
+    const coreGeo = new THREE.SphereGeometry(0.8, 24, 18)
+    const coreMat = new THREE.MeshStandardMaterial({
       color: COLORS.avatarNormal,
-      roughness: 0.4,
-      metalness: 0.1,
+      emissive: COLORS.avatarNormal,
+      emissiveIntensity: 0.6,
+      roughness: 0.1,
+      metalness: 0.3,
     })
-    this.avatarBody = new THREE.Mesh(bodyGeo, bodyMat)
+    this.avatarBody = new THREE.Mesh(coreGeo, coreMat)
     this.avatarBody.position.y = 1.0
     this.avatarBody.castShadow = true
     this.avatarGroup.add(this.avatarBody)
 
-    // Head — sphere
-    const headGeo = new THREE.SphereGeometry(0.4, 16, 12)
-    const headMat = new THREE.MeshStandardMaterial({
-      color: 0xf5cba7,
-      roughness: 0.6,
+    // Inner glow ring
+    const ringGeo = new THREE.TorusGeometry(1.0, 0.08, 8, 32)
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: COLORS.avatarNormal,
+      transparent: true,
+      opacity: 0.5,
     })
-    this.avatarHead = new THREE.Mesh(headGeo, headMat)
-    this.avatarHead.position.y = 2.2
-    this.avatarHead.castShadow = true
+    this.avatarHead = new THREE.Mesh(ringGeo, ringMat)
+    this.avatarHead.position.y = 1.0
+    this.avatarHead.rotation.x = Math.PI / 2
     this.avatarGroup.add(this.avatarHead)
 
-    // Stick — flattened box
-    const stickGeo = new THREE.BoxGeometry(0.08, 0.08, 2.2)
-    const stickMat = new THREE.MeshStandardMaterial({
-      color: 0x8b4513,
-      roughness: 0.6,
-    })
-    this.avatarStick = new THREE.Mesh(stickGeo, stickMat)
-    this.avatarStick.position.set(0.7, 0.6, -0.4)
-    this.avatarStick.rotation.x = 0.15
-    this.avatarGroup.add(this.avatarStick)
-
-    // Blade on stick
-    const bladeGeo = new THREE.BoxGeometry(0.3, 0.06, 0.5)
-    const bladeMat = new THREE.MeshStandardMaterial({ color: 0x333333 })
-    const blade = new THREE.Mesh(bladeGeo, bladeMat)
-    blade.position.set(0.7, 0.55, -1.5)
-    this.avatarGroup.add(blade)
-
-    // Glow sphere (invincibility indicator)
-    const glowGeo = new THREE.SphereGeometry(2.0, 16, 12)
+    // Outer glow sphere
+    const glowGeo = new THREE.SphereGeometry(1.8, 16, 12)
     const glowMat = new THREE.MeshBasicMaterial({
-      color: COLORS.avatarDeke,
+      color: COLORS.avatarNormal,
       transparent: true,
-      opacity: 0,
+      opacity: 0.12,
       side: THREE.BackSide,
     })
     this.avatarGlow = new THREE.Mesh(glowGeo, glowMat)
-    this.avatarGlow.position.y = 1.2
+    this.avatarGlow.position.y = 1.0
     this.avatarGroup.add(this.avatarGlow)
+
+    // Point light on the avatar for ice reflection
+    const avatarLight = new THREE.PointLight(0x2ecc71, 1.5, 12)
+    avatarLight.position.y = 1.0
+    this.avatarGroup.add(avatarLight)
+
+    // Unused but kept for interface compatibility
+    this.avatarStick = this.avatarBody
 
     this.avatarGroup.position.set(0, 0, AVATAR_Z)
     this.scene.add(this.avatarGroup)
@@ -548,256 +520,7 @@ export class Renderer {
   }
 
   // -----------------------------------------------------------------------
-  // HUD (HTML overlay)
-  // -----------------------------------------------------------------------
-
-  private buildHUD(): void {
-    this.hudContainer = document.createElement('div')
-    this.hudContainer.id = 'hud-overlay'
-    Object.assign(this.hudContainer.style, {
-      position: 'fixed',
-      top: '0',
-      left: '0',
-      width: '100%',
-      height: '100%',
-      pointerEvents: 'none',
-      zIndex: '20',
-      fontFamily: "'SF Mono', Menlo, monospace",
-    } as CSSStyleDeclaration)
-
-    // Score
-    this.hudScore = this.createHudEl({
-      top: '16px',
-      right: '24px',
-      fontSize: '28px',
-      fontWeight: 'bold',
-      color: '#ffffff',
-      textAlign: 'right',
-    })
-
-    // Multiplier
-    this.hudMultiplier = this.createHudEl({
-      top: '50px',
-      right: '24px',
-      fontSize: '18px',
-      fontWeight: 'bold',
-      color: '#FFD700',
-      textAlign: 'right',
-    })
-
-    // Lives
-    this.hudLives = this.createHudEl({
-      top: '16px',
-      left: '24px',
-      fontSize: '22px',
-    })
-
-    // Deke
-    this.hudDeke = this.createHudEl({
-      bottom: '80px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      fontSize: '12px',
-      color: 'rgba(46, 204, 113, 0.7)',
-      textAlign: 'center',
-    })
-
-    // Combo text
-    this.hudCombo = this.createHudEl({
-      top: '40%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-      fontSize: '36px',
-      fontWeight: 'bold',
-      color: '#FFD700',
-      textShadow: '0 0 20px rgba(255, 215, 0, 0.5)',
-      textAlign: 'center',
-      transition: 'opacity 0.3s',
-    })
-
-    // Speed
-    this.hudSpeed = this.createHudEl({
-      bottom: '16px',
-      right: '24px',
-      fontSize: '11px',
-      color: 'rgba(255, 255, 255, 0.3)',
-    })
-
-    // Stickhandling
-    this.hudStickhandling = this.createHudEl({
-      bottom: '16px',
-      left: '24px',
-      fontSize: '12px',
-      fontWeight: 'bold',
-      color: 'rgba(52, 152, 219, 0.8)',
-    })
-
-    this.parentEl.appendChild(this.hudContainer)
-  }
-
-  private createHudEl(styles: Record<string, string>): HTMLDivElement {
-    const el = document.createElement('div')
-    Object.assign(el.style, { position: 'absolute', ...styles })
-    this.hudContainer.appendChild(el)
-    return el
-  }
-
-  private updateHUD(state: GameState): void {
-    const showHud =
-      state.screen === 'playing' ||
-      state.screen === 'countdown' ||
-      state.screen === 'paused'
-
-    this.hudContainer.style.display = showHud ? 'block' : 'none'
-    if (!showHud) return
-
-    // Score
-    this.hudScore.textContent = `${state.score}`
-
-    // Multiplier
-    this.hudMultiplier.textContent =
-      state.multiplier > 1 ? `${state.multiplier}x` : ''
-
-    // Lives
-    let hearts = ''
-    for (let i = 0; i < 3; i++) {
-      hearts += i < state.lives
-        ? '<span style="color:#e74c3c">&#9829;</span>'
-        : '<span style="color:rgba(255,255,255,0.2)">&#9829;</span>'
-    }
-    this.hudLives.innerHTML = hearts
-
-    // Deke indicator
-    const now = performance.now()
-    if (!state.isDekeUnlocked) {
-      const remaining = GameState.DEKE_UNLOCK_MS - state.elapsed
-      if (remaining <= 10000) {
-        const secs = Math.ceil(remaining / 1000)
-        this.hudDeke.textContent = `DEKE in ${secs}s`
-        this.hudDeke.style.color = 'rgba(255,255,255,0.3)'
-      } else {
-        this.hudDeke.textContent = ''
-      }
-    } else if (state.dekeCooldownUntil > now) {
-      const remaining = (state.dekeCooldownUntil - now) / GameState.DEKE_COOLDOWN_MS
-      const pct = Math.round((1 - remaining) * 100)
-      this.hudDeke.textContent = `DEKE [${pct}%]`
-      this.hudDeke.style.color = 'rgba(255,255,255,0.4)'
-    } else if (state.screen === 'playing') {
-      this.hudDeke.innerHTML = '&#8595; DEKE'
-      this.hudDeke.style.color = 'rgba(46, 204, 113, 0.7)'
-    }
-
-    // Combo text
-    if (state.comboText && now < state.comboTextUntil) {
-      this.hudCombo.textContent = state.comboText
-      this.hudCombo.style.opacity = '1'
-    } else {
-      this.hudCombo.style.opacity = '0'
-    }
-
-    // Speed
-    this.hudSpeed.textContent = `${state.speed.toFixed(1)}x`
-
-    // Stickhandling
-    if (state.stickhandlingActive) {
-      this.hudStickhandling.textContent = `STICKHANDLING ${state.stickhandlingFrequency.toFixed(1)}Hz`
-    } else {
-      this.hudStickhandling.textContent = ''
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Overlay screens (title, countdown, game over, paused)
-  // -----------------------------------------------------------------------
-
-  private buildOverlay(): void {
-    this.overlayContainer = document.createElement('div')
-    this.overlayContainer.id = 'game-overlay'
-    Object.assign(this.overlayContainer.style, {
-      position: 'fixed',
-      top: '0',
-      left: '0',
-      width: '100%',
-      height: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      pointerEvents: 'none',
-      zIndex: '30',
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      color: '#ffffff',
-      textAlign: 'center',
-    } as CSSStyleDeclaration)
-    this.parentEl.appendChild(this.overlayContainer)
-  }
-
-  private updateOverlay(state: GameState): void {
-    const now = performance.now()
-
-    if (state.screen === 'title') {
-      let html = `
-        <div style="font-size:48px;font-weight:bold;margin-bottom:12px;text-shadow:0 0 30px rgba(46,204,113,0.4)">PUCK RUNNER</div>
-        <div style="font-size:18px;opacity:0.5;margin-bottom:24px">Dodge obstacles &bull; Collect coins &bull; Deke for style</div>
-        <div style="font-size:15px;opacity:0.7;margin-bottom:6px">Use &larr; &rarr; to move, &darr; to deke</div>
-        <div style="font-size:15px;opacity:0.7;margin-bottom:28px">Press SPACE to start</div>
-      `
-      if (state.highScore > 0) {
-        html += `<div style="font-size:18px;font-weight:bold;color:#FFD700">High Score: ${state.highScore}</div>`
-      }
-      html += `<div style="font-size:13px;opacity:0.3;margin-top:32px;font-family:'SF Mono',Menlo,monospace">${
-        state.trackerConnected ? '&#9679; Tracker connected' : '&#9675; Keyboard mode (&larr; &rarr; &darr;)'
-      }</div>`
-      this.overlayContainer.innerHTML = html
-      this.overlayContainer.style.background = 'rgba(0,0,0,0.45)'
-      return
-    }
-
-    if (state.screen === 'countdown') {
-      const remaining = Math.ceil((state.countdownEnd - now) / 1000)
-      if (remaining > 0) {
-        this.overlayContainer.innerHTML = `
-          <div style="font-size:96px;font-weight:bold;text-shadow:0 0 40px rgba(255,255,255,0.3)">${remaining}</div>
-        `
-        this.overlayContainer.style.background = 'rgba(0,0,0,0.35)'
-      } else {
-        this.overlayContainer.innerHTML = ''
-        this.overlayContainer.style.background = 'none'
-      }
-      return
-    }
-
-    if (state.screen === 'paused') {
-      this.overlayContainer.innerHTML = `
-        <div style="font-size:40px;font-weight:bold;margin-bottom:12px">PAUSED</div>
-        <div style="font-size:18px;opacity:0.6">Move ball back into view</div>
-      `
-      this.overlayContainer.style.background = 'rgba(0,0,0,0.55)'
-      return
-    }
-
-    if (state.screen === 'game_over') {
-      let html = `
-        <div style="font-size:44px;font-weight:bold;margin-bottom:20px">GAME OVER</div>
-        <div style="font-size:32px;font-weight:bold;font-family:'SF Mono',Menlo,monospace;margin-bottom:10px">${state.score}</div>
-        <div style="font-size:16px;opacity:0.5;margin-bottom:16px">Time: ${(state.elapsed / 1000).toFixed(1)}s</div>
-      `
-      if (state.score >= state.highScore && state.score > 0) {
-        html += `<div style="font-size:20px;font-weight:bold;color:#FFD700;margin-bottom:16px">NEW HIGH SCORE!</div>`
-      } else if (state.highScore > 0) {
-        html += `<div style="font-size:14px;opacity:0.4;margin-bottom:16px">Best: ${state.highScore}</div>`
-      }
-      html += `<div style="font-size:16px;opacity:0.7;margin-top:12px">Press SPACE to play again</div>`
-      this.overlayContainer.innerHTML = html
-      this.overlayContainer.style.background = 'rgba(0,0,0,0.65)'
-      return
-    }
-
-    // playing — clear overlay
-    this.overlayContainer.innerHTML = ''
-    this.overlayContainer.style.background = 'none'
-  }
+  // HUD and overlays are handled by ui-overlay.ts
 
   // -----------------------------------------------------------------------
   // Public render
@@ -843,12 +566,6 @@ export class Renderer {
     // Particles
     this.updateParticles(dt)
 
-    // HUD
-    this.updateHUD(state)
-
-    // Overlay screens
-    this.updateOverlay(state)
-
     // Render
     this.renderer.render(this.scene, this.camera)
   }
@@ -884,18 +601,23 @@ export class Renderer {
     // Color: green normally, red when deke invincible
     const bodyMat = this.avatarBody.material as THREE.MeshStandardMaterial
     const invincible = state.isDekeInvincible
-    bodyMat.color.setHex(invincible ? COLORS.avatarDeke : COLORS.avatarNormal)
+    const color = invincible ? COLORS.avatarDeke : COLORS.avatarNormal
+    bodyMat.color.setHex(color)
+    bodyMat.emissive.setHex(color)
+    bodyMat.emissiveIntensity = 0.6 + Math.sin(performance.now() * 0.004) * 0.2
 
-    // Glow sphere
+    // Ring spin
+    this.avatarHead.rotation.z = performance.now() * 0.002
+    const ringMat = this.avatarHead.material as THREE.MeshBasicMaterial
+    ringMat.color.setHex(color)
+
+    // Outer glow — always visible, pulses, bigger when invincible
     const glowMat = this.avatarGlow.material as THREE.MeshBasicMaterial
-    if (invincible) {
-      glowMat.opacity = 0.2 + Math.sin(performance.now() * 0.01) * 0.1
-      glowMat.color.setHex(COLORS.avatarDeke)
-      this.avatarGlow.visible = true
-    } else {
-      this.avatarGlow.visible = false
-      glowMat.opacity = 0
-    }
+    glowMat.color.setHex(color)
+    const baseOpacity = invincible ? 0.25 : 0.12
+    glowMat.opacity = baseOpacity + Math.sin(performance.now() * 0.006) * 0.06
+    const glowScale = invincible ? 1.4 + Math.sin(performance.now() * 0.01) * 0.2 : 1.0
+    this.avatarGlow.scale.setScalar(glowScale)
   }
 
   // -----------------------------------------------------------------------

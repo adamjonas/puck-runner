@@ -500,14 +500,43 @@ function renderPlayerSelect(): void {
   })
   addBtn.textContent = '+ Add Player'
   addBtn.addEventListener('click', () => {
-    const name = window.prompt('Enter player name (1-20 characters):')
-    if (name) {
-      const profile = addProfile(name)
-      if (profile) {
-        selectedProfile = profile.name
-        renderPlayerSelect()
+    // Replace button with inline input
+    const input = document.createElement('input')
+    css(input, {
+      fontFamily: FONT_TEXT,
+      fontSize: '16px',
+      color: '#fff',
+      background: 'rgba(255,255,255,0.1)',
+      border: '2px solid rgba(46,204,113,0.5)',
+      borderRadius: '8px',
+      padding: '6px 12px',
+      outline: 'none',
+      minWidth: '180px',
+      textAlign: 'center',
+      pointerEvents: 'auto',
+    })
+    input.placeholder = 'Enter name...'
+    input.maxLength = 20
+    addBtn.replaceWith(input)
+    input.focus()
+
+    const submit = () => {
+      const name = input.value.trim()
+      if (name) {
+        const profile = addProfile(name)
+        if (profile) {
+          selectedProfile = profile.name
+        }
       }
+      renderPlayerSelect()
     }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); submit() }
+      if (e.key === 'Escape') renderPlayerSelect()
+      e.stopPropagation() // prevent game from capturing keys
+    })
+    input.addEventListener('blur', submit)
   })
   playerListEl.appendChild(addBtn)
 }
@@ -614,12 +643,16 @@ export function updateOverlay(state: GameState, announcer: Announcer): void {
   // Deke indicator
   if (isPlaying) {
     if (!state.isDekeUnlocked) {
-      // Show time until unlock
-      const remaining = Math.ceil((GameState.DEKE_UNLOCK_MS - state.elapsed) / 1000)
-      dekeEl.textContent = `DEKE in ${remaining}s`
-      dekeEl.style.background = 'rgba(0,0,0,0.5)'
-      dekeEl.style.color = 'rgba(255,255,255,0.4)'
-      dekeEl.style.opacity = '1'
+      const remainingMs = GameState.DEKE_UNLOCK_MS - state.elapsed
+      if (remainingMs <= 10000) {
+        const remaining = Math.ceil(remainingMs / 1000)
+        dekeEl.textContent = `🎯 DEKE in ${remaining}s`
+        dekeEl.style.background = 'rgba(0,0,0,0.5)'
+        dekeEl.style.color = 'rgba(255,255,255,0.4)'
+        dekeEl.style.opacity = '1'
+      } else {
+        dekeEl.style.opacity = '0'
+      }
     } else if (state.isDekeReady) {
       dekeEl.textContent = '\u2193 DEKE'
       dekeEl.style.background = `rgba(46, 204, 113, 0.3)`
