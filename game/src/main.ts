@@ -57,6 +57,7 @@ let lastStickhandlingTick = 0
 let lastSpeedMilestone = 1.0
 let firstCoinAnnounced = false
 let dekeUnlockAnnounced = false
+let onFireAnnounced = false
 
 // Ball-lost grace period
 const BALL_LOST_GRACE_MS = 1000
@@ -73,6 +74,7 @@ function update(now: number, dt: number): void {
       announceGameStart(announcer)
       firstCoinAnnounced = false
       dekeUnlockAnnounced = false
+      onFireAnnounced = false
       lastSpeedMilestone = 1.0
     } else {
       const remaining = Math.ceil((state.countdownEnd - now) / 1000)
@@ -117,8 +119,9 @@ function update(now: number, dt: number): void {
         announceLifeLost(announcer)
       } else {
         playSound('game_over')
-        muteAudio() // silence after game over sound
-        announceGameOver(announcer)
+        announcer.clear() // stop any pending announcements
+        announceGameOver(announcer) // this one gets through
+        muteAudio() // silence everything after game over sound
         if (state.score >= state.highScore && state.score > 0) {
           announceNewHighScore(announcer)
         }
@@ -146,8 +149,9 @@ function update(now: number, dt: number): void {
       }
     }
 
-    // 5x multiplier announcement
-    if (state.multiplier >= 5) {
+    // 5x multiplier announcement (one-shot)
+    if (state.multiplier >= 5 && !onFireAnnounced) {
+      onFireAnnounced = true
       announceMultiplier5x(announcer)
     }
 

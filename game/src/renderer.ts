@@ -81,10 +81,10 @@ export class Renderer {
   private prevAvatarX = 0.5
   private leanAngle = 0
 
-  // Obstacle pool
+  // Obstacle pool — each entry has typed meshes: boards, zamboni, crack, snow, gate
   private obstaclePool: THREE.Group[] = []
-  private obstacleLabelPool: THREE.Sprite[] = []
-  private secondLanePool: THREE.Mesh[] = []
+  private obstacleTypeMeshes: Map<string, THREE.Object3D>[] = []
+  private secondLanePool: THREE.Group[] = []
 
   // Coin pool
   private coinPool: THREE.Mesh[] = []
@@ -338,44 +338,175 @@ export class Renderer {
   // -----------------------------------------------------------------------
 
   private buildObstaclePool(): void {
+    const laneW = RINK_W * 0.28
+
     for (let i = 0; i < MAX_OBSTACLES; i++) {
       const group = new THREE.Group()
       group.visible = false
+      const meshes = new Map<string, THREE.Object3D>()
 
-      // Main barrier box
-      const geo = new THREE.BoxGeometry(RINK_W * 0.28, 1.2, 1.5)
-      const mat = new THREE.MeshStandardMaterial({
-        color: COLORS.obstacleRed,
-        roughness: 0.5,
-        metalness: 0.1,
-      })
-      const mesh = new THREE.Mesh(geo, mat)
-      mesh.position.y = 0.6
-      mesh.castShadow = true
-      group.add(mesh)
+      // --- BOARDS: wooden wall segment ---
+      const boardsGroup = new THREE.Group()
+      const boardMain = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW, 1.8, 0.5),
+        new THREE.MeshStandardMaterial({ color: 0x8b5e3c, roughness: 0.8, metalness: 0 }),
+      )
+      boardMain.position.y = 0.9
+      boardMain.castShadow = true
+      boardsGroup.add(boardMain)
+      // Horizontal planks
+      for (let p = 0; p < 3; p++) {
+        const plank = new THREE.Mesh(
+          new THREE.BoxGeometry(laneW + 0.2, 0.08, 0.55),
+          new THREE.MeshStandardMaterial({ color: 0x6d4c2a, roughness: 0.9 }),
+        )
+        plank.position.y = 0.4 + p * 0.6
+        boardsGroup.add(plank)
+      }
+      boardsGroup.visible = false
+      group.add(boardsGroup)
+      meshes.set('boards', boardsGroup)
 
-      // Label sprite
-      const label = this.makeTextSprite('')
-      label.position.y = 1.8
-      group.add(label)
+      // --- ZAMBONI: boxy vehicle ---
+      const zamboniGroup = new THREE.Group()
+      // Body
+      const zBody = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.7, 1.4, 2.5),
+        new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.3, metalness: 0.4 }),
+      )
+      zBody.position.y = 0.9
+      zBody.castShadow = true
+      zamboniGroup.add(zBody)
+      // Cab (on top, front half)
+      const zCab = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.5, 0.8, 1.0),
+        new THREE.MeshStandardMaterial({ color: 0x3498db, roughness: 0.4, metalness: 0.2 }),
+      )
+      zCab.position.set(0, 1.9, -0.5)
+      zamboniGroup.add(zCab)
+      // Wheels (4 cylinders)
+      const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8)
+      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 })
+      for (const [wx, wz] of [[-laneW * 0.3, -0.8], [laneW * 0.3, -0.8], [-laneW * 0.3, 0.8], [laneW * 0.3, 0.8]]) {
+        const wheel = new THREE.Mesh(wheelGeo, wheelMat)
+        wheel.rotation.z = Math.PI / 2
+        wheel.position.set(wx, 0.3, wz)
+        zamboniGroup.add(wheel)
+      }
+      zamboniGroup.visible = false
+      group.add(zamboniGroup)
+      meshes.set('zamboni', zamboniGroup)
+
+      // --- CRACK: dark jagged line on ice ---
+      const crackGroup = new THREE.Group()
+      const crackBase = new THREE.Mesh(
+        new THREE.PlaneGeometry(laneW, 2.5),
+        new THREE.MeshStandardMaterial({
+          color: 0x1a1a2e,
+          transparent: true,
+          opacity: 0.7,
+          roughness: 0.9,
+        }),
+      )
+      crackBase.rotation.x = -Math.PI / 2
+      crackBase.position.y = 0.02
+      crackGroup.add(crackBase)
+      // Jagged crack lines
+      for (let j = 0; j < 5; j++) {
+        const seg = new THREE.Mesh(
+          new THREE.BoxGeometry(0.15, 0.05, 0.8 + Math.random() * 0.5),
+          new THREE.MeshBasicMaterial({ color: 0x4a90d9 }),
+        )
+        seg.position.set((Math.random() - 0.5) * laneW * 0.6, 0.03, (Math.random() - 0.5) * 1.5)
+        seg.rotation.y = (Math.random() - 0.5) * 0.8
+        crackGroup.add(seg)
+      }
+      crackGroup.visible = false
+      group.add(crackGroup)
+      meshes.set('crack', crackGroup)
+
+      // --- SNOW: mound of snow/shavings ---
+      const snowGroup = new THREE.Group()
+      const snowMound = new THREE.Mesh(
+        new THREE.SphereGeometry(1.5, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshStandardMaterial({ color: 0xf0f5ff, roughness: 0.95, metalness: 0 }),
+      )
+      snowMound.scale.set(laneW / 3, 1, 1.2)
+      snowMound.castShadow = true
+      snowGroup.add(snowMound)
+      // Smaller mounds
+      for (let s = 0; s < 3; s++) {
+        const sm = new THREE.Mesh(
+          new THREE.SphereGeometry(0.5 + Math.random() * 0.4, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+          new THREE.MeshStandardMaterial({ color: 0xe8eeff, roughness: 0.95 }),
+        )
+        sm.position.set((Math.random() - 0.5) * laneW * 0.5, 0, (Math.random() - 0.5) * 0.8)
+        snowGroup.add(sm)
+      }
+      snowGroup.visible = false
+      group.add(snowGroup)
+      meshes.set('snow', snowGroup)
+
+      // --- GATE: penalty box gate (orange/yellow striped barrier) ---
+      const gateGroup = new THREE.Group()
+      const gatePole1 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 2.5, 8),
+        new THREE.MeshStandardMaterial({ color: 0xf39c12, roughness: 0.5 }),
+      )
+      gatePole1.position.set(-laneW * 0.45, 1.25, 0)
+      gatePole1.castShadow = true
+      gateGroup.add(gatePole1)
+      const gatePole2 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 2.5, 8),
+        new THREE.MeshStandardMaterial({ color: 0xf39c12, roughness: 0.5 }),
+      )
+      gatePole2.position.set(laneW * 0.45, 1.25, 0)
+      gatePole2.castShadow = true
+      gateGroup.add(gatePole2)
+      // Crossbar
+      const crossbar = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW, 0.15, 0.15),
+        new THREE.MeshStandardMaterial({ color: 0xe74c3c, roughness: 0.4 }),
+      )
+      crossbar.position.y = 2.3
+      gateGroup.add(crossbar)
+      // Horizontal bars (danger stripes)
+      for (let b = 0; b < 3; b++) {
+        const bar = new THREE.Mesh(
+          new THREE.BoxGeometry(laneW, 0.1, 0.1),
+          new THREE.MeshStandardMaterial({ color: b % 2 === 0 ? 0xe74c3c : 0xf39c12 }),
+        )
+        bar.position.y = 0.6 + b * 0.7
+        gateGroup.add(bar)
+      }
+      gateGroup.visible = false
+      group.add(gateGroup)
+      meshes.set('gate', gateGroup)
 
       this.scene.add(group)
       this.obstaclePool.push(group)
-      this.obstacleLabelPool.push(label)
+      this.obstacleTypeMeshes.push(meshes)
 
-      // Second-lane box (for gate type)
-      const geo2 = new THREE.BoxGeometry(RINK_W * 0.28, 1.2, 1.5)
-      const mat2 = new THREE.MeshStandardMaterial({
-        color: COLORS.obstacleRed,
-        roughness: 0.5,
-        metalness: 0.1,
-      })
-      const mesh2 = new THREE.Mesh(geo2, mat2)
-      mesh2.position.y = 0.6
-      mesh2.castShadow = true
-      mesh2.visible = false
-      group.add(mesh2)
-      this.secondLanePool.push(mesh2)
+      // Second lane group (clone of gate for the second lane)
+      const secondGroup = new THREE.Group()
+      secondGroup.visible = false
+      // Simple barrier for second lane
+      const sg = new THREE.Group()
+      const sp1 = gatePole1.clone()
+      const sp2 = gatePole2.clone()
+      const scb = crossbar.clone()
+      sg.add(sp1, sp2, scb)
+      for (let b = 0; b < 3; b++) {
+        const bar = new THREE.Mesh(
+          new THREE.BoxGeometry(laneW, 0.1, 0.1),
+          new THREE.MeshStandardMaterial({ color: b % 2 === 0 ? 0xe74c3c : 0xf39c12 }),
+        )
+        bar.position.y = 0.6 + b * 0.7
+        sg.add(bar)
+      }
+      secondGroup.add(sg)
+      this.scene.add(secondGroup)
+      this.secondLanePool.push(secondGroup)
     }
   }
 
@@ -629,16 +760,19 @@ export class Renderer {
 
     for (let i = 0; i < MAX_OBSTACLES; i++) {
       const group = this.obstaclePool[i]
-      const secondMesh = this.secondLanePool[i]
+      const meshes = this.obstacleTypeMeshes[i]
+      const secondGroup = this.secondLanePool[i]
 
       if (i >= obstacles.length) {
         group.visible = false
+        secondGroup.visible = false
         continue
       }
 
       const obs = obstacles[i]
       if (!obs.active) {
         group.visible = false
+        secondGroup.visible = false
         continue
       }
 
@@ -649,24 +783,18 @@ export class Renderer {
       const worldX = LANE_X[obs.lane] ?? 0
       group.position.set(worldX, 0, worldZ)
 
-      // Colour
-      const mainMesh = group.children[0] as THREE.Mesh
-      const mat = mainMesh.material as THREE.MeshStandardMaterial
-      mat.color.setHex(obs.type === 'zamboni' ? COLORS.obstacleOrange : COLORS.obstacleRed)
+      // Show only the mesh matching the obstacle type
+      for (const [type, mesh] of meshes) {
+        mesh.visible = type === obs.type
+      }
 
-      // Label
-      this.updateLabelSprite(this.obstacleLabelPool[i], obs.type)
-
-      // Second lane (gate)
+      // Second lane (gate only)
       if (obs.secondLane) {
         const x2 = LANE_X[obs.secondLane] ?? 0
-        secondMesh.visible = true
-        // Position relative to group
-        secondMesh.position.x = x2 - worldX
-        const mat2 = secondMesh.material as THREE.MeshStandardMaterial
-        mat2.color.setHex(COLORS.obstacleRed)
+        secondGroup.visible = true
+        secondGroup.position.set(x2, 0, worldZ)
       } else {
-        secondMesh.visible = false
+        secondGroup.visible = false
       }
     }
   }
@@ -730,63 +858,6 @@ export class Renderer {
       mesh.rotation.z = time * 0.002 + i // slow spin
 
       glow.position.set(worldX, floatY, worldZ)
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Text sprite helper
-  // -----------------------------------------------------------------------
-
-  private labelCache = new Map<string, THREE.Texture>()
-
-  private makeLabelTexture(text: string): THREE.Texture {
-    const cached = this.labelCache.get(text)
-    if (cached) return cached
-
-    const canvas = document.createElement('canvas')
-    canvas.width = 256
-    canvas.height = 64
-    const ctx = canvas.getContext('2d')!
-    ctx.clearRect(0, 0, 256, 64)
-    ctx.fillStyle = '#ffffff'
-    ctx.font = 'bold 28px sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(text, 128, 32)
-
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.needsUpdate = true
-    this.labelCache.set(text, tex)
-    return tex
-  }
-
-  private makeTextSprite(text: string): THREE.Sprite {
-    const tex = this.makeLabelTexture(text || ' ')
-    const mat = new THREE.SpriteMaterial({
-      map: tex,
-      transparent: true,
-      depthTest: false,
-    })
-    const sprite = new THREE.Sprite(mat)
-    sprite.scale.set(4, 1, 1)
-    return sprite
-  }
-
-  private readonly OBSTACLE_LABELS: Record<string, string> = {
-    boards: 'BOARDS',
-    zamboni: 'ZAMBONI',
-    crack: 'CRACK',
-    snow: 'SNOW',
-    gate: 'GATE',
-  }
-
-  private updateLabelSprite(sprite: THREE.Sprite, type: string): void {
-    const text = this.OBSTACLE_LABELS[type] || type.toUpperCase()
-    const mat = sprite.material as THREE.SpriteMaterial
-    const newTex = this.makeLabelTexture(text)
-    if (mat.map !== newTex) {
-      mat.map = newTex
-      mat.needsUpdate = true
     }
   }
 
