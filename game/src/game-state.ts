@@ -17,6 +17,11 @@ export interface Obstacle {
   passed: boolean // already scored past
   width: number // 1 = single lane, 2 = two lanes (gate only)
   secondLane?: Lane // for two-lane obstacles
+  // Moving zamboni fields
+  moving: boolean // true if this obstacle drives across lanes
+  movingX: number // current X position (0.0-1.0, same scale as avatarX)
+  movingTargetX: number // where it's headed
+  movingSpeed: number // X units per ms
 }
 
 export interface Coin {
@@ -160,7 +165,7 @@ export class GameState {
     this.lastCoinCollectTime = 0
     this.comboText = ''
     this.comboTextUntil = 0
-    for (const o of this.obstacles) { o.active = false; o.passed = false }
+    for (const o of this.obstacles) { o.active = false; o.passed = false; o.moving = false }
     for (const c of this.coins) { c.active = false; c.collected = false }
   }
 

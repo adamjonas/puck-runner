@@ -968,7 +968,10 @@ export class Renderer {
 
       // Map y (0=far, 1=near) to world z
       const worldZ = FAR_Z + obs.y * (NEAR_Z - FAR_Z)
-      const worldX = LANE_X[obs.lane] ?? 0
+      // Moving obstacles use continuous X position; static use lane center
+      const worldX = obs.moving
+        ? (obs.movingX - 0.5) * RINK_W
+        : (LANE_X[obs.lane] ?? 0)
       group.position.set(worldX, 0, worldZ)
 
       // Show only the mesh matching the obstacle type

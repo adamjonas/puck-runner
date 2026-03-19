@@ -21,6 +21,10 @@ export function createObstaclePool(): Obstacle[] {
       active: false,
       passed: false,
       width: 1,
+      moving: false,
+      movingX: 0.5,
+      movingTargetX: 0.5,
+      movingSpeed: 0,
     })
   }
   return pool
@@ -88,8 +92,13 @@ export function spawnObstacle(state: GameState, now: number): void {
 
   // Decide type
   let type: Obstacle['type']
-  const isGateEligible = elapsed >= 60
-  if (isGateEligible && Math.random() < 0.15) {
+  const isAdvancedEligible = elapsed >= 60
+  let isMovingZamboni = false
+  if (isAdvancedEligible && Math.random() < 0.12) {
+    // 12% chance of moving zamboni (drives across the rink)
+    type = 'zamboni'
+    isMovingZamboni = true
+  } else if (isAdvancedEligible && Math.random() < 0.15) {
     type = 'gate'
   } else {
     type = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)]
@@ -152,6 +161,21 @@ export function spawnObstacle(state: GameState, now: number): void {
   obs.active = true
   obs.passed = false
 
+  // Moving zamboni: starts on one side, drives to the other
+  if (isMovingZamboni) {
+    obs.moving = true
+    const startLeft = Math.random() < 0.5
+    obs.movingX = startLeft ? GameState.LANE_X.left : GameState.LANE_X.right
+    obs.movingTargetX = startLeft ? GameState.LANE_X.right : GameState.LANE_X.left
+    obs.movingSpeed = 0.0002 + Math.random() * 0.0001 // varies slightly
+    obs.lane = startLeft ? 'left' : 'right' // initial lane for fallback
+  } else {
+    obs.moving = false
+    obs.movingX = GameState.LANE_X[lane]
+    obs.movingTargetX = GameState.LANE_X[lane]
+    obs.movingSpeed = 0
+  }
+
   lastSpawnTime = now
 }
 
@@ -163,7 +187,33 @@ export function updateObstacles(state: GameState, dt: number, viewportHeight: nu
     if (obs.y > 1.2) {
       obs.active = false
     }
+
+    // Animate moving zamboni across lanes
+    if (obs.moving) {
+      const dir = obs.movingTargetX > obs.movingX ? 1 : -1
+      obs.movingX += dir * obs.movingSpeed * dt
+      // Check if reached target
+      if ((dir > 0 && obs.movingX >= obs.movingTargetX) ||
+          (dir < 0 && obs.movingX <= obs.movingTargetX)) {
+        obs.movingX = obs.movingTargetX
+      }
+    }
   }
+}
+
+/** Check if player's X position overlaps with an obstacle's X position */
+function isPlayerOverlapping(obs: Obstacle, state: GameState): boolean {
+  const hitWidth = 0.12 // how close in X the player needs to be to collide
+
+  if (obs.moving) {
+    // Moving obstacle: check continuous X position
+    return Math.abs(state.avatarX - obs.movingX) < hitWidth
+  }
+
+  // Static obstacle: check lane match
+  const inLane = obs.lane === state.lane ||
+    (obs.secondLane !== undefined && obs.secondLane === state.lane)
+  return inLane
 }
 
 export function checkCollisions(
@@ -177,17 +227,13 @@ export function checkCollisions(
     if (obs.y > PLAYER_Y + HIT_THRESHOLD) {
       obs.passed = true
 
-      // Was the player in this obstacle's lane(s) when it passed?
-      const inLane =
-        obs.lane === state.lane ||
-        (obs.secondLane !== undefined && obs.secondLane === state.lane)
+      // Was the player overlapping this obstacle when it passed?
+      const overlapping = isPlayerOverlapping(obs, state)
 
-      if (!inLane) {
-        // Obstacle passed harmlessly in a different lane
+      if (!overlapping) {
         return 'passed'
       }
 
-      // Player was in the lane but invincible via deke
       if (state.isDekeInvincible) {
         state.lastDekeSuccessTime = now
         return 'deke_success'
@@ -200,10 +246,7 @@ export function checkCollisions(
     const inHitZone = Math.abs(obs.y - PLAYER_Y) < HIT_THRESHOLD
     if (!inHitZone) continue
 
-    const inLane =
-      obs.lane === state.lane ||
-      (obs.secondLane !== undefined && obs.secondLane === state.lane)
-    if (!inLane) continue
+    if (!isPlayerOverlapping(obs, state)) continue
 
     // Skip during invincibility or lane transition
     if (state.isDekeInvincible) {
