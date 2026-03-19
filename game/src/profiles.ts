@@ -14,6 +14,7 @@ export interface PlayerProfile {
   highScore: number
   gamesPlayed: number
   bestCombo: string
+  tutorialComplete: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +97,7 @@ export function addProfile(name: string): PlayerProfile | null {
     highScore: 0,
     gamesPlayed: 0,
     bestCombo: '',
+    tutorialComplete: false,
   }
 
   profiles.push(profile)
@@ -114,6 +116,7 @@ export function updateProfile(
   name: string,
   score: number,
   combo?: string,
+  tutorialComplete?: boolean,
 ): PlayerProfile | null {
   const profiles = loadProfiles()
   const profile = profiles.find(
@@ -135,6 +138,10 @@ export function updateProfile(
     // Keep the "best" combo — prefer whichever was achieved most recently
     // when provided, since the caller only sends noteworthy combos.
     profile.bestCombo = combo
+  }
+
+  if (tutorialComplete !== undefined) {
+    profile.tutorialComplete = tutorialComplete
   }
 
   saveProfiles(profiles)
@@ -172,14 +179,19 @@ export function deleteProfile(name: string): boolean {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Runtime shape check for a single profile object. */
+/** Runtime shape check for a single profile object. Backfills missing fields. */
 function isValidProfile(value: unknown): value is PlayerProfile {
   if (typeof value !== 'object' || value === null) return false
   const obj = value as Record<string, unknown>
-  return (
+  const valid =
     typeof obj.name === 'string' &&
     typeof obj.highScore === 'number' &&
     typeof obj.gamesPlayed === 'number' &&
     typeof obj.bestCombo === 'string'
-  )
+  if (!valid) return false
+  // Backward compat: default tutorialComplete to false for old profiles
+  if (typeof obj.tutorialComplete !== 'boolean') {
+    obj.tutorialComplete = false
+  }
+  return true
 }

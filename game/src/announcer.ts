@@ -201,3 +201,20 @@ export function announceLifeLost(a: Announcer): void {
 export function announceDekeUnlocked(a: Announcer): void {
   a.announce('🎯 Deke unlocked!', 'deke', 4)
 }
+
+// ---------------------------------------------------------------------------
+// Tutorial announcements
+// ---------------------------------------------------------------------------
+
+export function announceTutorialLanes(a: Announcer): void {
+  a.announce('🏒 Switch between all 3 lanes!', null, 4)
+}
+export function announceTutorialObstacles(a: Announcer): void {
+  a.announce('⚠️ Dodge the obstacles!', null, 4)
+}
+export function announceTutorialCoins(a: Announcer): void {
+  a.announce('💰 Collect the coins!', null, 4)
+}
+export function announceTutorialStickhandling(a: Announcer): void {
+  a.announce('🏒 Stickhandle for bonus points!', null, 4)
+}

@@ -1,4 +1,5 @@
 import { GameState } from './game-state'
+import type { Lane } from '@shared/protocol'
 import { Renderer } from './renderer'
 import { InputManager } from './input'
 import { createObstaclePool, spawnObstacle, updateObstacles, checkCollisions } from './obstacles'
@@ -7,7 +8,8 @@ import { ComboDetector } from './combos'
 import type { GameEvent } from './combos'
 import { initAudio, playSound, muteAudio, unmuteAudio } from './audio'
 import { loadProfiles, updateProfile } from './profiles'
-import { Announcer, announceGameStart, announceFirstCoin, announceMultiplier5x, announceDekeSuccess, announceCombo, announceGameOver, announceNewHighScore, announceSpeedMilestone, announceLifeLost, announceDekeUnlocked } from './announcer'
+import { Announcer, announceGameStart, announceFirstCoin, announceMultiplier5x, announceDekeSuccess, announceCombo, announceGameOver, announceNewHighScore, announceSpeedMilestone, announceLifeLost, announceDekeUnlocked, announceTutorialLanes, announceTutorialObstacles, announceTutorialCoins, announceTutorialStickhandling } from './announcer'
+import { TutorialManager, TutorialStep } from './tutorial'
 import { OverlayController } from './ui-overlay'
 
 const canvas = document.getElementById('game') as HTMLCanvasElement
@@ -17,11 +19,54 @@ const renderer = new Renderer(canvas)
 const input = new InputManager(state)
 const comboDetector = new ComboDetector()
 const announcer = new Announcer()
+const tutorial = new TutorialManager()
+
+// Track last tutorial step for announcements
+let lastTutorialStep: TutorialStep | null = null
+
 const startNewRun = (now: number) => {
+  // Check if the player needs the tutorial
+  const name = state.playerName
+  if (name) {
+    const profiles = loadProfiles()
+    const profile = profiles.find(p => p.name.toLowerCase() === name.toLowerCase())
+    if (profile && !profile.tutorialComplete) {
+      // Enter tutorial mode
+      state.syncTime(now)
+      state.reset()
+      state.screen = 'tutorial'
+      state.tutorialActive = true
+      state.startTime = now
+      state.speed = 0.6 // slow speed for tutorial
+      tutorial.start(state)
+      lastTutorialStep = TutorialStep.LANES
+      announceTutorialLanes(announcer)
+      return
+    }
+  }
   state.start(now)
 }
 const returnToMainMenu = () => {
   state.reset()
+}
+
+/** Start tutorial mode directly (callable from UI overlay) */
+export function startTutorial(): void {
+  const now = performance.now()
+  state.syncTime(now)
+  state.reset()
+  state.screen = 'tutorial'
+  state.tutorialActive = true
+  state.startTime = now
+  state.speed = 0.6
+  tutorial.start(state)
+  lastTutorialStep = TutorialStep.LANES
+  announceTutorialLanes(announcer)
+}
+
+/** Start practice mode — enter tutorial regardless of profile completion */
+export function startPractice(): void {
+  startTutorial()
 }
 const overlay = new OverlayController({
   onReplay: () => startNewRun(performance.now()),
@@ -61,9 +106,169 @@ let fpsTimer = 0
 // Ball-lost grace period
 const BALL_LOST_GRACE_MS = 1000
 
+const TUTORIAL_LANES: Lane[] = ['left', 'center', 'right']
+let tutorialObstacleCount = 0
+
+function spawnTutorialObjects(state: GameState, tut: TutorialManager, now: number): void {
+  const step = tut.getStep()
+
+  if (step === TutorialStep.OBSTACLES) {
+    // Spawn 1 slow obstacle at a time when none are active
+    const hasActive = state.obstacles.some(o => o.active)
+    if (!hasActive) {
+      const obs = state.obstacles.find(o => !o.active)
+      if (obs) {
+        // Alternate: first obstacle in a different lane, second in player's lane
+        tutorialObstacleCount++
+        const playerLane = state.lane
+        let lane: Lane
+        if (tutorialObstacleCount % 2 === 1) {
+          // Safe lane — pick a lane that's NOT the player's lane
+          const safeLanes = TUTORIAL_LANES.filter(l => l !== playerLane)
+          lane = safeLanes[Math.floor(Math.random() * safeLanes.length)]
+        } else {
+          // Player's lane — force them to dodge
+          lane = playerLane
+        }
+        obs.lane = lane
+        obs.y = 0
+        obs.type = 'boards'
+        obs.active = true
+        obs.passed = false
+        obs.width = 1
+        obs.secondLane = undefined
+        obs.moving = false
+        obs.movingX = GameState.LANE_X[lane]
+        obs.movingTargetX = GameState.LANE_X[lane]
+        obs.movingSpeed = 0
+      }
+    }
+  } else if (step === TutorialStep.COINS) {
+    // Spawn a group of 3 coins when none are active
+    const hasActive = state.coins.some(c => c.active)
+    if (!hasActive) {
+      // Pick a visible lane (prefer one that's not the player's current lane for movement)
+      const otherLanes = TUTORIAL_LANES.filter(l => l !== state.lane)
+      const lane = otherLanes.length > 0
+        ? otherLanes[Math.floor(Math.random() * otherLanes.length)]
+        : state.lane
+
+      const available: typeof state.coins[number][] = []
+      for (const c of state.coins) {
+        if (!c.active) {
+          available.push(c)
+          if (available.length >= 3) break
+        }
+      }
+      if (available.length >= 3) {
+        for (let i = 0; i < 3; i++) {
+          const coin = available[i]
+          coin.lane = lane
+          coin.y = -(i * 0.08)
+          coin.active = true
+          coin.collected = false
+        }
+      }
+    }
+  }
+  // Other steps: no spawning needed
+}
+
 function update(now: number, dt: number): void {
   state.syncTime(now)
   const viewportHeight = canvas.clientHeight || window.innerHeight || 1
+
+  // Tutorial mode
+  if (state.screen === 'tutorial') {
+    state.elapsed = now - state.startTime
+    state.updatePosition(dt)
+
+    // Update obstacles/coins during tutorial (tutorial controls spawning)
+    updateObstacles(state, dt, viewportHeight)
+    updateCoins(state, dt, viewportHeight)
+
+    // Track lane visits for tutorial step 1
+    tutorial.onLaneVisited(state.lane)
+
+    // Check collisions during tutorial (obstacles step)
+    if (tutorial.getStep() === TutorialStep.OBSTACLES) {
+      const livesBefore = state.lives
+      const screenBefore = state.screen
+      const result = checkCollisions(state, now)
+      if (result === 'passed') {
+        tutorial.onObstacleDodged()
+        playSound('coin') // positive feedback
+      }
+      // Don't lose lives during tutorial - restore if hit
+      if (result === 'hit') {
+        state.lives = livesBefore
+        state.screen = screenBefore
+      }
+    }
+
+    // Collect coins during tutorial (coins step)
+    if (tutorial.getStep() === TutorialStep.COINS) {
+      const collected = collectCoins(state)
+      if (collected > 0) {
+        playSound('coin')
+        for (let i = 0; i < collected; i++) {
+          tutorial.onCoinCollected()
+        }
+      }
+    }
+
+    // Stickhandling during tutorial
+    if (tutorial.getStep() === TutorialStep.STICKHANDLING) {
+      if (state.stickhandlingActive) {
+        if (state.stickhandlingStreakStart > 0) {
+          tutorial.onStickhandlingDuration(now - state.stickhandlingStreakStart)
+        }
+      }
+    }
+
+    // Spawn tutorial obstacles/coins based on step
+    spawnTutorialObjects(state, tutorial, now)
+
+    // Announce step transitions
+    const currentStep = tutorial.getStep()
+    if (lastTutorialStep !== null && currentStep !== lastTutorialStep) {
+      lastTutorialStep = currentStep
+      if (currentStep === TutorialStep.OBSTACLES) {
+        // Clear lane-step objects
+        for (const o of state.obstacles) { o.active = false; o.passed = false }
+        for (const c of state.coins) { c.active = false; c.collected = false }
+        tutorialObstacleCount = 0
+        announceTutorialObstacles(announcer)
+      } else if (currentStep === TutorialStep.COINS) {
+        for (const o of state.obstacles) { o.active = false; o.passed = false }
+        for (const c of state.coins) { c.active = false; c.collected = false }
+        announceTutorialCoins(announcer)
+      } else if (currentStep === TutorialStep.STICKHANDLING) {
+        for (const o of state.obstacles) { o.active = false; o.passed = false }
+        for (const c of state.coins) { c.active = false; c.collected = false }
+        announceTutorialStickhandling(announcer)
+      }
+    }
+
+    // Check if tutorial is complete
+    if (tutorial.isComplete()) {
+      state.tutorialActive = false
+      state.screen = 'countdown'
+      state.countdownEnd = now + 3000
+      // Clear tutorial objects
+      for (const o of state.obstacles) { o.active = false; o.passed = false }
+      for (const c of state.coins) { c.active = false; c.collected = false }
+      announcer.announce('🎯 You\'re ready! Let\'s go!', null, 5)
+      // Mark tutorial complete in profile
+      const name = state.playerName
+      if (name) {
+        updateProfile(name, 0, undefined, true)
+      }
+    }
+
+    announcer.update(now)
+    return // Skip normal game update
+  }
 
   // Countdown → playing transition
   if (state.screen === 'countdown') {

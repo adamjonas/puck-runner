@@ -50,6 +50,9 @@ export class GameState {
   // Screen state
   screen: GameScreenState = 'title'
 
+  // Tutorial
+  tutorialActive = false
+
   // Avatar position (0.0 = left edge, 1.0 = right edge)
   avatarX = 0.5
   targetAvatarX = 0.5

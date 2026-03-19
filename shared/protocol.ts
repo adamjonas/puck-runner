@@ -33,6 +33,7 @@ export type GameScreenState =
   | 'playing'
   | 'paused'
   | 'game_over'
+  | 'tutorial'
 
 export type GameEvent =
   | 'coin_collected'

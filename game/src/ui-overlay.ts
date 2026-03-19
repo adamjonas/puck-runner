@@ -18,6 +18,13 @@ const Z_HUD = 100
 const Z_OVERLAY = 200
 const GAME_OVER_SCORE_COUNT_MS = 1200
 
+/** Returns a CSS clamp() that scales `px` between small laptops and TVs. */
+function scaled(px: number): string {
+  const vw = +(px / 19.2).toFixed(2)
+  const min = Math.round(px * 0.55)
+  return `clamp(${min}px, ${vw}vw, ${px}px)`
+}
+
 let overlayStylesInjected = false
 
 function css(el: HTMLElement, styles: Partial<CSSStyleDeclaration>): void {
@@ -370,7 +377,7 @@ export class OverlayController {
       top: '16px',
       right: '16px',
       fontFamily: FONT_MONO,
-      fontSize: '36px',
+      fontSize: scaled(36),
       fontWeight: '800',
       color: '#fff',
       textAlign: 'right',
@@ -383,7 +390,7 @@ export class OverlayController {
       top: '60px',
       right: '16px',
       fontFamily: FONT_MONO,
-      fontSize: '18px',
+      fontSize: scaled(18),
       fontWeight: '700',
       color: GOLD,
       textAlign: 'right',
@@ -399,7 +406,7 @@ export class OverlayController {
       position: 'absolute',
       top: '16px',
       left: '16px',
-      fontSize: '28px',
+      fontSize: scaled(28),
       letterSpacing: '4px',
       textShadow: '0 2px 8px rgba(0,0,0,0.6)',
     })
@@ -411,7 +418,7 @@ export class OverlayController {
       left: '50%',
       transform: 'translateX(-50%)',
       fontFamily: FONT_TEXT,
-      fontSize: '14px',
+      fontSize: scaled(14),
       fontWeight: '600',
       color: 'rgba(255,255,255,0.45)',
       letterSpacing: '3px',
@@ -425,7 +432,7 @@ export class OverlayController {
       left: '50%',
       transform: 'translateX(-50%)',
       fontFamily: FONT_TEXT,
-      fontSize: '16px',
+      fontSize: scaled(16),
       fontWeight: '700',
       color: '#fff',
       padding: '6px 18px',
@@ -443,7 +450,7 @@ export class OverlayController {
       left: '50%',
       transform: 'translate(-50%, -50%)',
       fontFamily: FONT_TEXT,
-      fontSize: '48px',
+      fontSize: scaled(48),
       fontWeight: '900',
       color: GOLD,
       textAlign: 'center',
@@ -469,7 +476,7 @@ export class OverlayController {
     })
     this.announcerTextEl = span('', {
       fontFamily: FONT_TEXT,
-      fontSize: '20px',
+      fontSize: scaled(20),
       fontWeight: '600',
       color: '#fff',
       whiteSpace: 'nowrap',
@@ -482,7 +489,7 @@ export class OverlayController {
       bottom: '24px',
       right: '16px',
       fontFamily: FONT_MONO,
-      fontSize: '14px',
+      fontSize: scaled(14),
       fontWeight: '600',
       color: 'rgba(255,255,255,0.7)',
       padding: '4px 10px',
@@ -496,7 +503,7 @@ export class OverlayController {
       bottom: '24px',
       left: '16px',
       fontFamily: FONT_MONO,
-      fontSize: '14px',
+      fontSize: scaled(14),
       fontWeight: '600',
       color: 'rgba(255,255,255,0.7)',
       padding: '4px 10px',
@@ -528,7 +535,7 @@ export class OverlayController {
 
     const title = div({
       fontFamily: FONT_TEXT,
-      fontSize: '64px',
+      fontSize: scaled(64),
       fontWeight: '900',
       color: '#fff',
       letterSpacing: '4px',
@@ -540,7 +547,7 @@ export class OverlayController {
 
     const subtitle = div({
       fontFamily: FONT_TEXT,
-      fontSize: '18px',
+      fontSize: scaled(18),
       fontWeight: '400',
       color: 'rgba(255,255,255,0.6)',
       marginBottom: '32px',
@@ -562,7 +569,7 @@ export class OverlayController {
 
     this.overlayHighScoreEl = div({
       fontFamily: FONT_MONO,
-      fontSize: '16px',
+      fontSize: scaled(16),
       color: GOLD,
       marginBottom: '24px',
     })
@@ -570,7 +577,7 @@ export class OverlayController {
 
     const instructions = div({
       fontFamily: FONT_TEXT,
-      fontSize: '16px',
+      fontSize: scaled(16),
       color: 'rgba(255,255,255,0.5)',
       textAlign: 'center',
       lineHeight: '1.6',
@@ -655,7 +662,7 @@ export class OverlayController {
 
     const heading = div({
       fontFamily: FONT_TEXT,
-      fontSize: '48px',
+      fontSize: scaled(48),
       fontWeight: '900',
       color: RED,
       letterSpacing: '3px',
@@ -666,7 +673,7 @@ export class OverlayController {
 
     const scoreLabel = div({
       fontFamily: FONT_TEXT,
-      fontSize: '13px',
+      fontSize: scaled(13),
       fontWeight: '700',
       letterSpacing: '4px',
       textTransform: 'uppercase',
@@ -678,7 +685,7 @@ export class OverlayController {
 
     this.gameOverScoreEl = div({
       fontFamily: FONT_MONO,
-      fontSize: '64px',
+      fontSize: scaled(64),
       fontWeight: '800',
       color: '#fff',
       marginBottom: '10px',
@@ -689,7 +696,7 @@ export class OverlayController {
 
     this.gameOverTimeEl = div({
       fontFamily: FONT_MONO,
-      fontSize: '18px',
+      fontSize: scaled(18),
       color: 'rgba(255,255,255,0.6)',
       marginBottom: '14px',
     })
@@ -697,7 +704,7 @@ export class OverlayController {
 
     this.gameOverHighBadgeEl = div({
       fontFamily: FONT_TEXT,
-      fontSize: '22px',
+      fontSize: scaled(22),
       fontWeight: '700',
       color: GOLD,
       marginBottom: '14px',
@@ -709,7 +716,7 @@ export class OverlayController {
 
     this.gameOverMessageEl = div({
       fontFamily: FONT_TEXT,
-      fontSize: '18px',
+      fontSize: scaled(18),
       color: 'rgba(255,255,255,0.82)',
       maxWidth: '520px',
       lineHeight: '1.5',
@@ -777,7 +784,7 @@ export class OverlayController {
       const titleEl = div({
         position: 'relative',
         fontFamily: FONT_TEXT,
-        fontSize: '18px',
+        fontSize: scaled(18),
         fontWeight: '800',
         color: '#fff',
         marginBottom: '6px',
@@ -789,7 +796,7 @@ export class OverlayController {
       const subtitleEl = div({
         position: 'relative',
         fontFamily: FONT_TEXT,
-        fontSize: '14px',
+        fontSize: scaled(14),
         lineHeight: '1.5',
         color: 'rgba(255,255,255,0.72)',
       })
@@ -823,7 +830,7 @@ export class OverlayController {
 
     const prompt = div({
       fontFamily: FONT_TEXT,
-      fontSize: '16px',
+      fontSize: scaled(16),
       color: 'rgba(255,255,255,0.5)',
       lineHeight: '1.7',
       textAlign: 'center',
@@ -857,7 +864,7 @@ export class OverlayController {
 
     this.countdownReadyEl = div({
       fontFamily: FONT_TEXT,
-      fontSize: '42px',
+      fontSize: scaled(42),
       fontWeight: '800',
       color: GOLD,
       textShadow: '0 0 30px rgba(255, 215, 0, 0.4)',
@@ -867,7 +874,7 @@ export class OverlayController {
 
     this.countdownNumberEl = div({
       fontFamily: FONT_MONO,
-      fontSize: '120px',
+      fontSize: scaled(120),
       fontWeight: '900',
       color: '#fff',
       textShadow: '0 0 40px rgba(255,255,255,0.3)',
@@ -893,7 +900,7 @@ export class OverlayController {
 
     const label = div({
       fontFamily: FONT_TEXT,
-      fontSize: '14px',
+      fontSize: scaled(14),
       color: 'rgba(255,255,255,0.5)',
       marginBottom: '4px',
     })
@@ -904,7 +911,7 @@ export class OverlayController {
       const btn = document.createElement('button')
       css(btn, {
         fontFamily: FONT_TEXT,
-        fontSize: '16px',
+        fontSize: scaled(16),
         fontWeight: '600',
         color: this.selectedProfile === profile.name ? '#000' : '#fff',
         background: this.selectedProfile === profile.name ? GOLD : 'rgba(255,255,255,0.1)',
@@ -928,7 +935,7 @@ export class OverlayController {
     const addBtn = document.createElement('button')
     css(addBtn, {
       fontFamily: FONT_TEXT,
-      fontSize: '20px',
+      fontSize: scaled(20),
       fontWeight: '700',
       color: 'rgba(255,255,255,0.5)',
       background: 'rgba(255,255,255,0.05)',
@@ -945,7 +952,7 @@ export class OverlayController {
       const input = document.createElement('input')
       css(input, {
         fontFamily: FONT_TEXT,
-        fontSize: '16px',
+        fontSize: scaled(16),
         color: '#fff',
         background: 'rgba(255,255,255,0.1)',
         border: '2px solid rgba(46,204,113,0.5)',
