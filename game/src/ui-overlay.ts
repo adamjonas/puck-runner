@@ -564,7 +564,7 @@ export class OverlayController {
       alignItems: 'center',
       gap: '8px',
       marginBottom: '24px',
-      maxHeight: '200px',
+      maxHeight: '300px',
       overflowY: 'auto',
       pointerEvents: 'auto',
     })
