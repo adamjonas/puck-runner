@@ -192,12 +192,14 @@ export class InputManager {
         }
       }
 
-      // Start game from title or game over
+      // Start game from title or game over (but not if tutorial just started)
       if (this.state.screen === 'title' || this.state.screen === 'game_over') {
         if (e.key === ' ' || e.key === 'Enter') {
           e.preventDefault()
-          this.state.start(performance.now())
-          this.keyboardLane = 'center'
+          if (!this.state.tutorialActive) {
+            this.state.start(performance.now())
+            this.keyboardLane = 'center'
+          }
           return
         }
       }
