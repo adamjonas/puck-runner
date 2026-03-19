@@ -52,6 +52,7 @@ const returnToMainMenu = () => {
 
 /** Start tutorial mode directly (callable from UI overlay) */
 export function startTutorial(): void {
+  console.log('[puck-runner] Starting tutorial')
   const now = performance.now()
   state.syncTime(now)
   state.reset()

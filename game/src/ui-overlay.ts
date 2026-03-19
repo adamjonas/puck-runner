@@ -1048,7 +1048,9 @@ export class OverlayController {
       marginTop: '8px',
     })
     practiceBtn.textContent = '🏒 Practice'
-    practiceBtn.addEventListener('click', () => {
+    practiceBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      e.preventDefault()
       this.onPractice()
     })
     this.playerListEl.appendChild(practiceBtn)

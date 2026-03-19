@@ -850,7 +850,7 @@ export class Renderer {
   render(state: GameState, dt: number): void {
     // Scroll the rink at the same rate obstacles approach
     const viewportHeight = this.renderer.domElement.clientHeight || window.innerHeight || 1
-    if (state.screen === 'playing' || state.screen === 'countdown') {
+    if (state.screen === 'playing' || state.screen === 'countdown' || state.screen === 'tutorial') {
       const obstacleSpeed = state.currentSpeed / viewportHeight
       this.scrollOffset += obstacleSpeed * dt
     }
