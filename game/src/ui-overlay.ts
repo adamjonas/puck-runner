@@ -149,15 +149,16 @@ function createHUD(): void {
   // Player name (top center)
   playerNameEl = div({
     position: 'absolute',
-    top: '16px',
+    top: '14px',
     left: '50%',
     transform: 'translateX(-50%)',
     fontFamily: FONT_TEXT,
-    fontSize: '16px',
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.7)',
-    textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-    letterSpacing: '1px',
+    fontSize: '22px',
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+    textShadow: '0 2px 10px rgba(0,0,0,0.6)',
+    letterSpacing: '2px',
+    textTransform: 'uppercase',
   })
   root.appendChild(playerNameEl)
 
@@ -441,7 +442,21 @@ function createCountdownOverlay(): void {
     opacity: '0',
     transition: 'opacity 0.2s ease',
     pointerEvents: 'none',
+    flexDirection: 'column',
+    gap: '16px',
   })
+
+  // Player ready text
+  const readyText = div({
+    fontFamily: FONT_TEXT,
+    fontSize: '42px',
+    fontWeight: '800',
+    color: GOLD,
+    textShadow: '0 0 30px rgba(255, 215, 0, 0.4)',
+    textAlign: 'center',
+  })
+  readyText.id = 'cd-ready'
+  countdownOverlay.appendChild(readyText)
 
   const number = div({
     fontFamily: FONT_MONO,
@@ -614,6 +629,11 @@ export function updateOverlay(state: GameState, announcer: Announcer): void {
     if (cdNum) {
       const clamped = Math.max(1, Math.min(3, remaining))
       cdNum.textContent = String(clamped)
+    }
+    const cdReady = document.getElementById('cd-ready')
+    if (cdReady) {
+      const name = state.playerName || 'Player'
+      cdReady.textContent = `${name}, ready?!?`
     }
   } else {
     countdownOverlay.style.opacity = '0'

@@ -685,7 +685,9 @@ export class Renderer {
     normalized.traverse((node) => {
       if ((node as THREE.Mesh).isMesh) {
         const mesh = node as THREE.Mesh
-        mesh.castShadow = true
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+        const isOpaque = materials.every((material) => !material.transparent && material.opacity >= 1)
+        mesh.castShadow = isOpaque
         mesh.receiveShadow = false
       }
     })

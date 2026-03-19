@@ -1,9 +1,11 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
-const OUTPUT_PATH = path.resolve('public/models/broken-ice-original.glb')
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
+const OUTPUT_PATH = path.resolve(SCRIPT_DIR, '../public/models/broken-ice-original.glb')
 
 globalThis.FileReader = class FileReaderPolyfill {
   constructor() {
