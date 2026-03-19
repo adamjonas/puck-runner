@@ -21,8 +21,12 @@ const OVERLAY_TEXT: Record<TutorialStep, string> = {
   [TutorialStep.LANES]: '🏒 Move left and right to switch lanes!',
   [TutorialStep.OBSTACLES]: '⚠️ Dodge the obstacles! Switch lanes to avoid them',
   [TutorialStep.COINS]: '💰 Collect coins for points! Move to the coin lane',
-  [TutorialStep.STICKHANDLING]: '🏒 Move the ball side to side to stickhandle for bonus points!',
+  [TutorialStep.STICKHANDLING]: '🏒 Stickhandle for bonus points!',
   [TutorialStep.READY]: '🎯 You\'re ready! Let\'s go!',
+}
+
+const OVERLAY_TEXT_KEYBOARD: Partial<Record<TutorialStep, string>> = {
+  [TutorialStep.STICKHANDLING]: '🏒 Press S to stickhandle for bonus points!',
 }
 
 const STICKHANDLE_POINTS_PER = 5
@@ -69,11 +73,15 @@ export class TutorialManager {
     return this.step
   }
 
-  getTotalSteps(trackerConnected: boolean): number {
-    return trackerConnected ? 4 : 3
+  getTotalSteps(_trackerConnected?: boolean): number {
+    return 4 // LANES, OBSTACLES, COINS, STICKHANDLING (always shown)
   }
 
   getOverlayText(): string {
+    if (!this.state?.trackerConnected) {
+      const keyboardText = OVERLAY_TEXT_KEYBOARD[this.step]
+      if (keyboardText) return keyboardText
+    }
     return OVERLAY_TEXT[this.step]
   }
 
@@ -146,10 +154,7 @@ export class TutorialManager {
   // --- Internal ---
 
   private advanceFromCoins(): void {
-    if (this.state?.trackerConnected) {
-      this.step = TutorialStep.STICKHANDLING
-    } else {
-      this.step = TutorialStep.READY
-    }
+    // Always show stickhandling step — keyboard players can use S key to simulate
+    this.step = TutorialStep.STICKHANDLING
   }
 }

@@ -38,10 +38,8 @@ describe('TutorialManager', () => {
     expect(tutorial.getStepIndex()).toBe(0)
   })
 
-  it('getTotalSteps() returns total number of steps (excluding READY)', () => {
-    // With tracker: LANES, OBSTACLES, COINS, STICKHANDLING = 4
-    // Without tracker: LANES, OBSTACLES, COINS = 3
-    expect(tutorial.getTotalSteps(false)).toBe(3)
+  it('getTotalSteps() returns 4 (LANES, OBSTACLES, COINS, STICKHANDLING)', () => {
+    expect(tutorial.getTotalSteps(false)).toBe(4)
     expect(tutorial.getTotalSteps(true)).toBe(4)
   })
 
@@ -121,7 +119,7 @@ describe('TutorialManager', () => {
     expect(tutorial.getStep()).toBe(TutorialStep.STICKHANDLING)
   })
 
-  it('skips STICKHANDLING and goes to READY when no tracker', () => {
+  it('shows STICKHANDLING even without tracker (use S key)', () => {
     state.trackerConnected = false
 
     tutorial.onLaneVisited('left')
@@ -133,7 +131,22 @@ describe('TutorialManager', () => {
     tutorial.onCoinCollected()
     tutorial.onCoinCollected()
     tutorial.onCoinCollected()
-    expect(tutorial.getStep()).toBe(TutorialStep.READY)
+    expect(tutorial.getStep()).toBe(TutorialStep.STICKHANDLING)
+  })
+
+  it('shows keyboard hint for stickhandling when no tracker', () => {
+    state.trackerConnected = false
+
+    tutorial.onLaneVisited('left')
+    tutorial.onLaneVisited('center')
+    tutorial.onLaneVisited('right')
+    tutorial.onObstacleDodged()
+    tutorial.onObstacleDodged()
+    tutorial.onCoinCollected()
+    tutorial.onCoinCollected()
+    tutorial.onCoinCollected()
+
+    expect(tutorial.getOverlayText()).toContain('Press S')
   })
 
   // --- Step 4: STICKHANDLING ---
@@ -227,8 +240,6 @@ describe('TutorialManager', () => {
   // --- Step 5: READY ---
 
   it('isComplete() returns true at READY step', () => {
-    state.trackerConnected = false
-
     tutorial.onLaneVisited('left')
     tutorial.onLaneVisited('center')
     tutorial.onLaneVisited('right')
@@ -237,6 +248,7 @@ describe('TutorialManager', () => {
     tutorial.onCoinCollected()
     tutorial.onCoinCollected()
     tutorial.onCoinCollected()
+    tutorial.onStickhandlingDuration(3000)
 
     expect(tutorial.getStep()).toBe(TutorialStep.READY)
     expect(tutorial.isComplete()).toBe(true)
