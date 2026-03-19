@@ -146,18 +146,17 @@ function createHUD(): void {
   })
   root.appendChild(livesEl)
 
-  // Player name (top center)
+  // Player name (top center — subtle jersey nameplate feel)
   playerNameEl = div({
     position: 'absolute',
-    top: '14px',
+    top: '18px',
     left: '50%',
     transform: 'translateX(-50%)',
     fontFamily: FONT_TEXT,
-    fontSize: '22px',
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.85)',
-    textShadow: '0 2px 10px rgba(0,0,0,0.6)',
-    letterSpacing: '2px',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: '3px',
     textTransform: 'uppercase',
   })
   root.appendChild(playerNameEl)
@@ -334,8 +333,8 @@ function createTitleOverlay(): void {
     lineHeight: '1.6',
   })
   instructions.innerHTML =
-    'Move your hockey stick left &amp; right to steer<br>' +
-    'Collect coins &bull; Dodge obstacles &bull; Build combos<br><br>' +
+    'Track a real ball with your iPhone &mdash; or use arrow keys<br>' +
+    'Dodge obstacles &bull; Collect coins &bull; Pull back to deke<br><br>' +
     '<span style="color:rgba(255,255,255,0.8);font-weight:600;">Press SPACE to start</span>'
   titleOverlay.appendChild(instructions)
 
@@ -497,7 +496,7 @@ function renderPlayerSelect(): void {
     color: 'rgba(255,255,255,0.5)',
     marginBottom: '4px',
   })
-  label.textContent = 'Select Player'
+  label.textContent = profiles.length > 0 ? 'Select Player' : 'Add a player to track your scores!'
   playerListEl.appendChild(label)
 
   // Profile buttons
