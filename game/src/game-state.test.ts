@@ -38,6 +38,7 @@ describe('GameState', () => {
 
   it('activates deke with cooldown', () => {
     const state = new GameState()
+    state.elapsed = GameState.DEKE_UNLOCK_MS // unlock deke
     const now = performance.now()
 
     expect(state.activateDeke(now)).toBe(true)
