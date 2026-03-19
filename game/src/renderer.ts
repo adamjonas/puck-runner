@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { GameState } from './game-state'
 import type { Obstacle, Coin } from './game-state'
 
@@ -142,6 +143,8 @@ export class Renderer {
     this.buildObstaclePool()
     this.buildCoinPool()
     this.buildParticlePool()
+    this.loadObstacleAsset('zamboni', '/models/zamboni-original.glb', RINK_W * 0.19)
+    this.loadObstacleAsset('crack', '/models/broken-ice-original.glb', RINK_W * 0.24)
 
     // Resize
     window.addEventListener('resize', () => this.onResize())
@@ -367,32 +370,175 @@ export class Renderer {
       group.add(boardsGroup)
       meshes.set('boards', boardsGroup)
 
-      // --- ZAMBONI: boxy vehicle ---
+      // --- ZAMBONI: more recognizable ice resurfacer silhouette ---
       const zamboniGroup = new THREE.Group()
-      // Body
-      const zBody = new THREE.Mesh(
-        new THREE.BoxGeometry(laneW * 0.7, 1.4, 2.5),
-        new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.3, metalness: 0.4 }),
+      const zWhite = new THREE.MeshStandardMaterial({ color: 0xf6f8fb, roughness: 0.35, metalness: 0.22 })
+      const zBlue = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.45, metalness: 0.18 })
+      const zDark = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.7, metalness: 0.1 })
+      const zMetal = new THREE.MeshStandardMaterial({ color: 0xa7b4c3, roughness: 0.3, metalness: 0.7 })
+      const zRubber = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.95, metalness: 0.02 })
+      const zGlass = new THREE.MeshStandardMaterial({
+        color: 0x8fd3ff,
+        roughness: 0.05,
+        metalness: 0.08,
+        transparent: true,
+        opacity: 0.38,
+      })
+      const zLight = new THREE.MeshStandardMaterial({ color: 0xfff4c2, emissive: 0xffd76a, emissiveIntensity: 0.9 })
+      const zBeacon = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.9 })
+
+      const chassis = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.82, 0.38, 3.05),
+        zBlue,
       )
-      zBody.position.y = 0.9
-      zBody.castShadow = true
-      zamboniGroup.add(zBody)
-      // Cab (on top, front half)
-      const zCab = new THREE.Mesh(
-        new THREE.BoxGeometry(laneW * 0.5, 0.8, 1.0),
-        new THREE.MeshStandardMaterial({ color: 0x3498db, roughness: 0.4, metalness: 0.2 }),
+      chassis.position.y = 0.34
+      chassis.castShadow = true
+      zamboniGroup.add(chassis)
+
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.72, 1.15, 2.2),
+        zWhite,
       )
-      zCab.position.set(0, 1.9, -0.5)
-      zamboniGroup.add(zCab)
-      // Wheels (4 cylinders)
-      const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8)
-      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 })
-      for (const [wx, wz] of [[-laneW * 0.3, -0.8], [laneW * 0.3, -0.8], [-laneW * 0.3, 0.8], [laneW * 0.3, 0.8]]) {
-        const wheel = new THREE.Mesh(wheelGeo, wheelMat)
+      body.position.set(0, 0.98, 0.18)
+      body.castShadow = true
+      zamboniGroup.add(body)
+
+      const frontCowling = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.64, 0.72, 0.92),
+        zWhite,
+      )
+      frontCowling.position.set(0, 0.86, -1.12)
+      frontCowling.rotation.x = 0.08
+      frontCowling.castShadow = true
+      zamboniGroup.add(frontCowling)
+
+      const roof = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.58, 0.14, 1.4),
+        zDark,
+      )
+      roof.position.set(0, 2.18, -0.28)
+      roof.castShadow = true
+      zamboniGroup.add(roof)
+
+      const cabBack = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.5, 0.8, 1.02),
+        zWhite,
+      )
+      cabBack.position.set(0, 1.78, -0.25)
+      cabBack.castShadow = true
+      zamboniGroup.add(cabBack)
+
+      const windshield = new THREE.Mesh(
+        new THREE.PlaneGeometry(laneW * 0.46, 0.62),
+        zGlass,
+      )
+      windshield.position.set(0, 1.86, -0.82)
+      windshield.rotation.x = -0.22
+      zamboniGroup.add(windshield)
+
+      for (const side of [-1, 1]) {
+        const sideWindow = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.72, 0.48),
+          zGlass,
+        )
+        sideWindow.position.set(side * laneW * 0.26, 1.82, -0.22)
+        sideWindow.rotation.y = side * Math.PI / 2
+        zamboniGroup.add(sideWindow)
+
+        const sideStripe = new THREE.Mesh(
+          new THREE.BoxGeometry(0.06, 0.22, 2.08),
+          zBlue,
+        )
+        sideStripe.position.set(side * laneW * 0.37, 0.86, 0.12)
+        sideStripe.castShadow = true
+        zamboniGroup.add(sideStripe)
+
+        const fenderFront = new THREE.Mesh(
+          new THREE.BoxGeometry(0.28, 0.26, 0.72),
+          zBlue,
+        )
+        fenderFront.position.set(side * laneW * 0.28, 0.62, -0.86)
+        fenderFront.castShadow = true
+        zamboniGroup.add(fenderFront)
+
+        const fenderRear = new THREE.Mesh(
+          new THREE.BoxGeometry(0.28, 0.26, 0.72),
+          zBlue,
+        )
+        fenderRear.position.set(side * laneW * 0.28, 0.62, 0.92)
+        fenderRear.castShadow = true
+        zamboniGroup.add(fenderRear)
+      }
+
+      const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.22, 18)
+      const hubGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.24, 12)
+      for (const [wx, wz] of [[-laneW * 0.28, -0.86], [laneW * 0.28, -0.86], [-laneW * 0.28, 0.92], [laneW * 0.28, 0.92]]) {
+        const wheel = new THREE.Mesh(wheelGeo, zRubber)
         wheel.rotation.z = Math.PI / 2
         wheel.position.set(wx, 0.3, wz)
+        wheel.castShadow = true
         zamboniGroup.add(wheel)
+
+        const hub = new THREE.Mesh(hubGeo, zMetal)
+        hub.rotation.z = Math.PI / 2
+        hub.position.set(wx, 0.3, wz)
+        zamboniGroup.add(hub)
       }
+
+      const bumper = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.7, 0.12, 0.22),
+        zMetal,
+      )
+      bumper.position.set(0, 0.22, -1.5)
+      bumper.castShadow = true
+      zamboniGroup.add(bumper)
+
+      const blade = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.76, 0.08, 0.34),
+        zDark,
+      )
+      blade.position.set(0, 0.08, -1.68)
+      blade.castShadow = true
+      zamboniGroup.add(blade)
+
+      const conditioner = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.56, 0.34, 0.56),
+        zMetal,
+      )
+      conditioner.position.set(0, 0.28, 1.52)
+      conditioner.castShadow = true
+      zamboniGroup.add(conditioner)
+
+      const squeegee = new THREE.Mesh(
+        new THREE.BoxGeometry(laneW * 0.64, 0.06, 0.18),
+        zDark,
+      )
+      squeegee.position.set(0, 0.06, 1.86)
+      zamboniGroup.add(squeegee)
+
+      for (const side of [-1, 1]) {
+        const headlight = new THREE.Mesh(
+          new THREE.SphereGeometry(0.11, 10, 8),
+          zLight,
+        )
+        headlight.position.set(side * laneW * 0.2, 0.84, -1.55)
+        zamboniGroup.add(headlight)
+      }
+
+      const beaconBase = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 0.08, 10),
+        zDark,
+      )
+      beaconBase.position.set(0, 2.28, 0.12)
+      zamboniGroup.add(beaconBase)
+
+      const beacon = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.1, 0.14, 10),
+        zBeacon,
+      )
+      beacon.position.set(0, 2.38, 0.12)
+      zamboniGroup.add(beacon)
+
       zamboniGroup.visible = false
       group.add(zamboniGroup)
       meshes.set('zamboni', zamboniGroup)
@@ -507,6 +653,48 @@ export class Renderer {
       secondGroup.add(sg)
       this.scene.add(secondGroup)
       this.secondLanePool.push(secondGroup)
+    }
+  }
+
+  private loadObstacleAsset(type: string, path: string, targetWidth: number): void {
+    const loader = new GLTFLoader()
+    loader.load(
+      path,
+      (gltf) => {
+        this.installObstacleAsset(type, gltf.scene, targetWidth)
+      },
+      undefined,
+      (error) => {
+        console.warn(`[Renderer] Falling back to procedural ${type}:`, error)
+      },
+    )
+  }
+
+  private installObstacleAsset(type: string, template: THREE.Object3D, targetWidth: number): void {
+    const normalized = template.clone(true)
+    const bounds = new THREE.Box3().setFromObject(normalized)
+    const size = new THREE.Vector3()
+    const center = new THREE.Vector3()
+    bounds.getSize(size)
+    bounds.getCenter(center)
+
+    const scale = size.x > 0 ? targetWidth / size.x : 1
+    normalized.scale.setScalar(scale)
+    normalized.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale)
+
+    normalized.traverse((node) => {
+      if ((node as THREE.Mesh).isMesh) {
+        const mesh = node as THREE.Mesh
+        mesh.castShadow = true
+        mesh.receiveShadow = false
+      }
+    })
+
+    for (let i = 0; i < this.obstacleTypeMeshes.length; i++) {
+      const obstacleGroup = this.obstacleTypeMeshes[i].get(type)
+      if (!(obstacleGroup instanceof THREE.Group)) continue
+      obstacleGroup.clear()
+      obstacleGroup.add(normalized.clone(true))
     }
   }
 
