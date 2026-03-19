@@ -290,28 +290,35 @@ export class Renderer {
       ctx.fillText('♥', 20 + i * 28, 38)
     }
 
-    // Deke cooldown indicator
+    // Deke indicator
     const now = performance.now()
-    if (state.dekeCooldownUntil > now) {
+    if (!state.isDekeUnlocked) {
+      // Show unlock progress
+      const remaining = GameState.DEKE_UNLOCK_MS - state.elapsed
+      if (remaining <= 10000) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'
+        ctx.font = '11px SF Mono, Menlo, monospace'
+        ctx.textAlign = 'center'
+        const secs = Math.ceil((GameState.DEKE_UNLOCK_MS - state.elapsed) / 1000)
+        ctx.fillText(`DEKE in ${secs}s`, w / 2, h * 0.75 + 45)
+      }
+    } else if (state.dekeCooldownUntil > now) {
       const remaining = (state.dekeCooldownUntil - now) / GameState.DEKE_COOLDOWN_MS
       const cx = w / 2
       const cy = h * 0.75 + 35
       const r = 12
 
-      // Background circle
       ctx.beginPath()
       ctx.arc(cx, cy, r, 0, Math.PI * 2)
       ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
       ctx.fill()
 
-      // Cooldown arc
       ctx.beginPath()
       ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + (1 - remaining) * Math.PI * 2)
       ctx.strokeStyle = '#2ecc71'
       ctx.lineWidth = 3
       ctx.stroke()
     } else if (state.screen === 'playing') {
-      // Deke ready indicator
       ctx.fillStyle = 'rgba(46, 204, 113, 0.6)'
       ctx.font = '11px SF Mono, Menlo, monospace'
       ctx.textAlign = 'center'

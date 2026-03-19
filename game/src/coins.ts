@@ -76,16 +76,13 @@ export function spawnCoins(state: GameState, now: number): void {
   lastSpawnTime = now
 }
 
-export function updateCoins(state: GameState, dt: number): void {
+export function updateCoins(state: GameState, dt: number, viewportHeight: number): void {
+  const speed = state.currentSpeed / Math.max(viewportHeight, 1)
   for (const coin of state.coins) {
     if (!coin.active) continue
-    coin.y += state.currentSpeed * dt
+    coin.y += speed * dt
 
     if (coin.y > 1.2) {
-      // Coin went off screen without being collected
-      if (!coin.collected) {
-        state.breakStreak()
-      }
       coin.active = false
     }
   }

@@ -174,9 +174,9 @@ final class BallDetector: ObservableObject {
         let totalSampled = Double((width / step) * (height / step))
         let matchRatio = Double(totalGrid) / totalSampled
 
-        // Confidence based on how many pixels matched (more = more confident)
-        // A tennis ball at typical distance covers ~1-5% of the frame
-        let rawConfidence = min(matchRatio / 0.02, 1.0) // 2% coverage = full confidence
+        // Confidence based on how many pixels matched (more = more confident).
+        // Use a gentler ramp so smaller, farther balls still clear the classifier's 0.1 floor.
+        let rawConfidence = min(matchRatio / 0.005, 1.0) // 0.5% coverage = full confidence
 
         // EMA smoothing
         let rawPoint = CGPoint(x: screenX, y: screenY)

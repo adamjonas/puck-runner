@@ -113,8 +113,15 @@ export class GameState {
     return GameState.BASE_SCROLL_SPEED * this.speed
   }
 
+  /** Deke unlocks after 60 seconds of play */
+  static readonly DEKE_UNLOCK_MS = 60000
+
+  get isDekeUnlocked(): boolean {
+    return this.elapsed >= GameState.DEKE_UNLOCK_MS
+  }
+
   get isDekeReady(): boolean {
-    return performance.now() > this.dekeCooldownUntil
+    return this.isDekeUnlocked && performance.now() > this.dekeCooldownUntil
   }
 
   get isDekeInvincible(): boolean {
@@ -153,8 +160,8 @@ export class GameState {
     this.lastCoinCollectTime = 0
     this.comboText = ''
     this.comboTextUntil = 0
-    this.obstacles = []
-    this.coins = []
+    for (const o of this.obstacles) { o.active = false; o.passed = false }
+    for (const c of this.coins) { c.active = false; c.collected = false }
   }
 
   start(): void {
@@ -178,6 +185,7 @@ export class GameState {
   }
 
   activateDeke(now: number): boolean {
+    if (!this.isDekeUnlocked) return false
     if (now < this.dekeCooldownUntil) return false
     this.dekeActive = true
     this.dekeInvincibleUntil = now + GameState.DEKE_INVINCIBLE_MS

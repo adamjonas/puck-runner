@@ -57,6 +57,8 @@ let lastSurvivalTick = 0
 let lastStickhandlingTick = 0
 
 function update(now: number, dt: number): void {
+  const viewportHeight = canvas.clientHeight || window.innerHeight || 1
+
   // Countdown → playing transition
   if (state.screen === 'countdown') {
     if (now >= state.countdownEnd) {
@@ -88,11 +90,11 @@ function update(now: number, dt: number): void {
 
     // Spawn & update obstacles
     spawnObstacle(state, now)
-    updateObstacles(state, dt)
+    updateObstacles(state, dt, viewportHeight)
 
     // Spawn & update coins
     spawnCoins(state, now)
-    updateCoins(state, dt)
+    updateCoins(state, dt, viewportHeight)
 
     // Check collisions
     const collisionResult = checkCollisions(state, now)

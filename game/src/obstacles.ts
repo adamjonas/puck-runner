@@ -155,10 +155,11 @@ export function spawnObstacle(state: GameState, now: number): void {
   lastSpawnTime = now
 }
 
-export function updateObstacles(state: GameState, dt: number): void {
+export function updateObstacles(state: GameState, dt: number, viewportHeight: number): void {
+  const speed = state.currentSpeed / Math.max(viewportHeight, 1)
   for (const obs of state.obstacles) {
     if (!obs.active) continue
-    obs.y += state.currentSpeed * dt
+    obs.y += speed * dt
     if (obs.y > 1.2) {
       obs.active = false
     }
