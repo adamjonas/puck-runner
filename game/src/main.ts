@@ -71,6 +71,7 @@ export function startPractice(): void {
 const overlay = new OverlayController({
   onReplay: () => startNewRun(performance.now()),
   onMenu: returnToMainMenu,
+  onPractice: () => startPractice(),
 })
 
 // Load high score from profiles

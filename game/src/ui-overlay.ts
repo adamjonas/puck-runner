@@ -78,6 +78,7 @@ function easeOutCubic(t: number): number {
 interface OverlayControllerOptions {
   onReplay?: () => void
   onMenu?: () => void
+  onPractice?: () => void
 }
 
 export class OverlayController {
@@ -127,11 +128,13 @@ export class OverlayController {
   private gameOverMessage = ''
   private readonly onReplay: () => void
   private readonly onMenu: () => void
+  private readonly onPractice: () => void
 
   constructor(options: OverlayControllerOptions = {}) {
     ensureOverlayStyles()
     this.onReplay = options.onReplay ?? (() => {})
     this.onMenu = options.onMenu ?? (() => {})
+    this.onPractice = options.onPractice ?? (() => {})
     this.root = div({
       position: 'fixed',
       top: '0',
@@ -994,6 +997,30 @@ export class OverlayController {
       input.addEventListener('blur', submit)
     })
     this.playerListEl.appendChild(addBtn)
+
+    // Practice button
+    const practiceBtn = document.createElement('button')
+    css(practiceBtn, {
+      fontFamily: FONT_TEXT,
+      fontSize: '16px',
+      fontWeight: '600',
+      color: GREEN,
+      background: 'rgba(46, 204, 113, 0.1)',
+      border: `2px solid ${GREEN}`,
+      borderRadius: '8px',
+      padding: '8px 24px',
+      cursor: 'pointer',
+      minWidth: '180px',
+      transition: 'background 0.2s ease',
+      pointerEvents: 'auto',
+      marginTop: '8px',
+    })
+    practiceBtn.textContent = '🏒 Practice'
+    practiceBtn.addEventListener('click', () => {
+      this.onPractice()
+    })
+    this.playerListEl.appendChild(practiceBtn)
+
     this.playerListDirty = false
   }
 }
