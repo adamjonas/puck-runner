@@ -848,15 +848,17 @@ export class Renderer {
   // -----------------------------------------------------------------------
 
   render(state: GameState, dt: number): void {
-    // Scroll the rink
+    // Scroll the rink at the same rate obstacles approach
+    const viewportHeight = this.renderer.domElement.clientHeight || window.innerHeight || 1
     if (state.screen === 'playing' || state.screen === 'countdown') {
-      this.scrollOffset += dt * state.currentSpeed * 0.06
+      const obstacleSpeed = state.currentSpeed / viewportHeight
+      this.scrollOffset += obstacleSpeed * dt
     }
 
     // Update ice scroll
     const iceMat = this.icePlane.material as THREE.MeshStandardMaterial
     if (iceMat.map) {
-      iceMat.map.offset.y = this.scrollOffset * 0.05
+      iceMat.map.offset.y = this.scrollOffset
       iceMat.map.needsUpdate = true
     }
 
