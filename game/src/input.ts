@@ -19,6 +19,12 @@ interface InputSample {
   serverTs: number
 }
 
+interface InputManagerOptions {
+  onStartRequested?: (now: number) => void
+  onReplayRequested?: (now: number) => void
+  onMenuRequested?: () => void
+}
+
 type InteractiveEventTarget = EventTarget & {
   tagName?: string
   isContentEditable?: boolean
@@ -74,7 +80,10 @@ export class InputManager {
   // Deke tracking
   private prevDeke = false
 
-  constructor(private state: GameState) {}
+  constructor(
+    private state: GameState,
+    private options: InputManagerOptions = {},
+  ) {}
 
   get inputRate(): number {
     return this._inputRate
@@ -158,10 +167,18 @@ export class InputManager {
       )
       if (action === 'replay') {
         this.keyboardLane = 'center'
-        this.state.start(now)
+        if (this.options.onReplayRequested) {
+          this.options.onReplayRequested(now)
+        } else {
+          this.state.start(now)
+        }
       } else if (action === 'menu') {
         this.keyboardLane = 'center'
-        this.state.reset()
+        if (this.options.onMenuRequested) {
+          this.options.onMenuRequested()
+        } else {
+          this.state.reset()
+        }
       }
       this.prevDeke = input.deke
       this.inputCount++
@@ -227,7 +244,11 @@ export class InputManager {
       if (this.state.screen === 'game_over') {
         if (e.key === 'Escape' || e.key.toLowerCase() === 'm') {
           e.preventDefault()
-          this.state.reset()
+          if (this.options.onMenuRequested) {
+            this.options.onMenuRequested()
+          } else {
+            this.state.reset()
+          }
           this.keyboardLane = 'center'
           return
         }
@@ -238,7 +259,12 @@ export class InputManager {
         if (e.key === ' ' || e.key === 'Enter') {
           e.preventDefault()
           if (!this.state.tutorialActive) {
-            this.state.start(performance.now())
+            const now = performance.now()
+            if (this.options.onStartRequested) {
+              this.options.onStartRequested(now)
+            } else {
+              this.state.start(now)
+            }
             this.keyboardLane = 'center'
           }
           return

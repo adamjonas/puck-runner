@@ -3,7 +3,9 @@
  */
 
 const STORAGE_KEY = 'puck-runner-profiles'
+const SCORE_RESET_MIGRATION_KEY = 'puck-runner-score-reset-cora-colby-v1'
 const MAX_PROFILES = 20
+const BUILTIN_SCORE_RESET_NAMES = new Set(['cora', 'colby'])
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,7 +55,7 @@ const BUILTIN_NAME_SET = new Set(BUILTIN_PROFILES.map((profile) => profile.name.
 
 /** Load builtin profiles merged with saved progress, followed by custom profiles. */
 export function loadProfiles(): PlayerProfile[] {
-  const storedProfiles = loadStoredProfiles()
+  const storedProfiles = applyBuiltinScoreReset(loadStoredProfiles())
   const storedByName = new Map(
     storedProfiles.map((profile) => [profile.name.toLowerCase(), profile]),
   )
@@ -226,6 +228,59 @@ function loadStoredProfiles(): PlayerProfile[] {
       // Storage completely unavailable
     }
     return []
+  }
+}
+
+function applyBuiltinScoreReset(profiles: PlayerProfile[]): PlayerProfile[] {
+  if (hasAppliedScoreResetMigration()) {
+    return profiles
+  }
+
+  let changed = false
+  const nextProfiles = profiles.map((profile) => {
+    if (!BUILTIN_SCORE_RESET_NAMES.has(profile.name.toLowerCase())) {
+      return profile
+    }
+    if (profile.highScore === 0) {
+      return profile
+    }
+    changed = true
+    return {
+      ...profile,
+      highScore: 0,
+    }
+  })
+
+  markScoreResetMigrationApplied()
+
+  if (changed) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextProfiles))
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'QuotaExceededError') {
+        console.warn('puck-runner: localStorage quota exceeded — profile reset not saved')
+      } else {
+        console.warn('puck-runner: failed to persist builtin score reset', err)
+      }
+    }
+  }
+
+  return nextProfiles
+}
+
+function hasAppliedScoreResetMigration(): boolean {
+  try {
+    return localStorage.getItem(SCORE_RESET_MIGRATION_KEY) === '1'
+  } catch {
+    return true
+  }
+}
+
+function markScoreResetMigrationApplied(): void {
+  try {
+    localStorage.setItem(SCORE_RESET_MIGRATION_KEY, '1')
+  } catch {
+    // Storage unavailable; avoid blocking profile reads.
   }
 }
 

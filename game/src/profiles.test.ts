@@ -9,6 +9,7 @@ import {
 } from './profiles'
 
 const storage = new Map<string, string>()
+const SCORE_RESET_MIGRATION_KEY = 'puck-runner-score-reset-cora-colby-v1'
 
 vi.stubGlobal('localStorage', {
   getItem: (key: string) => storage.get(key) ?? null,
@@ -27,6 +28,7 @@ describe('loadProfiles', () => {
   })
 
   it('merges saved builtin progress and appends custom profiles', () => {
+    storage.set(SCORE_RESET_MIGRATION_KEY, '1')
     storage.set(
       'puck-runner-profiles',
       JSON.stringify([
@@ -83,6 +85,55 @@ describe('loadProfiles', () => {
     storage.set('puck-runner-profiles', 'not valid json{{{')
 
     expect(loadProfiles()).toEqual(BUILTIN_PROFILES)
+  })
+
+  it('resets saved scores for Cora and Colby once', () => {
+    storage.set(
+      'puck-runner-profiles',
+      JSON.stringify([
+        {
+          name: 'Cora',
+          highScore: 240,
+          gamesPlayed: 5,
+          bestCombo: 'THE SNIPE',
+          tutorialComplete: true,
+        },
+        {
+          name: 'Colby',
+          highScore: 80,
+          gamesPlayed: 2,
+          bestCombo: 'WHEELS',
+          tutorialComplete: true,
+        },
+        {
+          name: 'Wayne',
+          highScore: 999,
+          gamesPlayed: 9,
+          bestCombo: 'LEGACY',
+          tutorialComplete: true,
+        },
+      ]),
+    )
+
+    const profiles = loadProfiles()
+
+    expect(profiles[0]).toMatchObject({
+      name: 'Cora',
+      highScore: 0,
+      gamesPlayed: 5,
+      bestCombo: 'THE SNIPE',
+    })
+    expect(profiles[1]).toMatchObject({
+      name: 'Colby',
+      highScore: 0,
+      gamesPlayed: 2,
+      bestCombo: 'WHEELS',
+    })
+    expect(profiles[2]).toMatchObject({
+      name: 'Wayne',
+      highScore: 999,
+    })
+    expect(storage.get(SCORE_RESET_MIGRATION_KEY)).toBe('1')
   })
 })
 
