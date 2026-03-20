@@ -64,9 +64,7 @@ export function spawnObstacle(state: GameState, now: number): void {
 
   if (elapsed < 30) {
     // First 30 seconds: ~1 obstacle every 3-4 seconds
-    // With 60fps calls, we need probability per frame
-    const targetInterval = 3000 + Math.random() * 1000 // 3-4 seconds in ms
-    if (now - state.run.lastObstacleSpawnTime < targetInterval) return
+    if (now - state.run.lastObstacleSpawnTime < state.run.nextObstacleSpawnInterval) return
     spawnChance = 1 // guaranteed if interval passed
   } else {
     // After 30s: density increases with speed
@@ -174,6 +172,7 @@ export function spawnObstacle(state: GameState, now: number): void {
   }
 
   state.run.lastObstacleSpawnTime = now
+  state.run.nextObstacleSpawnInterval = 3000 + Math.random() * 1000
 }
 
 export function updateObstacles(state: GameState, dt: number, viewportHeight: number): void {
@@ -237,7 +236,11 @@ export function checkCollisions(
         return 'deke_success'
       }
 
-      continue
+      if (state.isLaneTransitioning) continue
+
+      // Obstacle passed through player — collision
+      state.loseLife()
+      return 'hit'
     }
 
     // Check active collision zone
