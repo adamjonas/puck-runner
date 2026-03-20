@@ -222,7 +222,7 @@ export function markTutorialComplete(name: string): PlayerProfile | null {
 /** Return all profiles sorted by high score descending. */
 export function getLeaderboard(): PlayerProfile[] {
   const profiles = loadProfiles()
-  return profiles.sort((a, b) => b.highScore - a.highScore)
+  return [...profiles].sort((a, b) => b.highScore - a.highScore)
 }
 
 // ---------------------------------------------------------------------------
