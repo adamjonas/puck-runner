@@ -43,9 +43,8 @@ function laneHasObstacleNearby(state: GameState, lane: Lane): boolean {
 export function spawnCoins(state: GameState, now: number): void {
   if (state.screen !== 'playing') return
 
-  // Spawn every 2-3 seconds
-  const interval = 2000 + Math.random() * 1000
-  if (now - state.run.lastCoinSpawnTime < interval) return
+  // Spawn every 2-3 seconds (interval decided once per spawn cycle)
+  if (now - state.run.lastCoinSpawnTime < state.run.nextCoinSpawnInterval) return
 
   // Pick a lane that doesn't have an obstacle nearby
   const safeLanes = LANES.filter((l) => !laneHasObstacleNearby(state, l))
@@ -64,6 +63,7 @@ export function spawnCoins(state: GameState, now: number): void {
   }
 
   state.run.lastCoinSpawnTime = now
+  state.run.nextCoinSpawnInterval = 2000 + Math.random() * 1000
 }
 
 export function updateCoins(state: GameState, dt: number, viewportHeight: number): void {
