@@ -76,6 +76,7 @@ export class InputManager {
   private _inputRate = 0
 
   private keyboardLane: Lane = 'center'
+  private keydownHandler: ((e: KeyboardEvent) => void) | null = null
 
   // Deke tracking
   private prevDeke = false
@@ -238,7 +239,7 @@ export class InputManager {
   }
 
   setupKeyboard(): void {
-    window.addEventListener('keydown', (e) => {
+    this.keydownHandler = (e) => {
       if (shouldSuppressGlobalKeydown(e.target, e.key)) return
 
       if (this.state.screen === 'game_over') {
@@ -307,12 +308,17 @@ export class InputManager {
           }
           break
       }
-    })
+    }
+    window.addEventListener('keydown', this.keydownHandler)
   }
 
   destroy(): void {
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer)
+    }
+    if (this.keydownHandler) {
+      window.removeEventListener('keydown', this.keydownHandler)
+      this.keydownHandler = null
     }
     this.ws?.close()
   }
