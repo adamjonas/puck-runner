@@ -165,32 +165,58 @@ export function updateProfile(
   combo?: string,
   tutorialComplete?: boolean,
 ): PlayerProfile | null {
-  const profiles = loadProfiles()
-  const profile = profiles.find(
-    (candidate) => candidate.name.toLowerCase() === name.toLowerCase(),
-  )
+  return updateStoredProfile(name, (profile) => {
+    profile.gamesPlayed++
 
-  if (!profile) {
-    console.warn(`puck-runner: profile "${name}" not found`)
-    return null
-  }
+    if (score > profile.highScore) {
+      profile.highScore = score
+    }
 
-  profile.gamesPlayed++
+    if (combo && (!profile.bestCombo || combo !== profile.bestCombo)) {
+      profile.bestCombo = combo
+    }
 
-  if (score > profile.highScore) {
-    profile.highScore = score
-  }
+    if (tutorialComplete !== undefined) {
+      profile.tutorialComplete = tutorialComplete
+    }
+  })
+}
 
-  if (combo && (!profile.bestCombo || combo !== profile.bestCombo)) {
-    profile.bestCombo = combo
-  }
+interface RunResultUpdate {
+  score: number
+  combo?: string
+}
 
-  if (tutorialComplete !== undefined) {
-    profile.tutorialComplete = tutorialComplete
-  }
+export function recordRunResult(
+  name: string,
+  result: RunResultUpdate,
+): PlayerProfile | null {
+  return updateStoredProfile(name, (profile) => {
+    profile.gamesPlayed++
 
-  saveProfiles(profiles)
-  return { ...profile }
+    if (result.score > profile.highScore) {
+      profile.highScore = result.score
+    }
+
+    if (result.combo && (!profile.bestCombo || result.combo !== profile.bestCombo)) {
+      profile.bestCombo = result.combo
+    }
+  })
+}
+
+/**
+ * Mark a player's tutorial as complete without affecting gamesPlayed or score.
+ *
+ * @returns The updated profile, or `null` if not found.
+ */
+export function setTutorialComplete(name: string): PlayerProfile | null {
+  return updateStoredProfile(name, (profile) => {
+    profile.tutorialComplete = true
+  })
+}
+
+export function markTutorialComplete(name: string): PlayerProfile | null {
+  return setTutorialComplete(name)
 }
 
 /** Return all profiles sorted by high score descending. */
@@ -202,6 +228,25 @@ export function getLeaderboard(): PlayerProfile[] {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function updateStoredProfile(
+  name: string,
+  mutate: (profile: PlayerProfile) => void,
+): PlayerProfile | null {
+  const profiles = loadProfiles()
+  const profile = profiles.find(
+    (candidate) => candidate.name.toLowerCase() === name.toLowerCase(),
+  )
+
+  if (!profile) {
+    console.warn(`puck-runner: profile "${name}" not found`)
+    return null
+  }
+
+  mutate(profile)
+  saveProfiles(profiles)
+  return { ...profile }
+}
 
 function isBuiltinProfileName(name: string): boolean {
   return BUILTIN_NAME_SET.has(name.toLowerCase())

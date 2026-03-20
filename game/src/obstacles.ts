@@ -1,6 +1,7 @@
 import type { Lane } from '@shared/protocol'
 import type { Obstacle } from './game-state'
 import { GameState } from './game-state'
+import { activateObstacle, createInactiveObstacle, resetObstacle } from './world-entities'
 
 const POOL_SIZE = 20
 const LANES: Lane[] = ['left', 'center', 'right']
@@ -9,21 +10,12 @@ const PLAYER_Y = 0.75
 const HIT_THRESHOLD = 0.05
 const MIN_SPAWN_INTERVAL = 500 // ms at current speed
 
+export type CollisionResult = 'hit' | 'deke_success' | 'passed' | null
+
 export function createObstaclePool(): Obstacle[] {
   const pool: Obstacle[] = []
   for (let i = 0; i < POOL_SIZE; i++) {
-    pool.push({
-      lane: 'center',
-      y: 0,
-      type: 'boards',
-      active: false,
-      passed: false,
-      width: 1,
-      moving: false,
-      movingX: 0.5,
-      movingTargetX: 0.5,
-      movingSpeed: 0,
-    })
+    pool.push(createInactiveObstacle())
   }
   return pool
 }
@@ -153,25 +145,32 @@ export function spawnObstacle(state: GameState, now: number): void {
     obs.secondLane = undefined
   }
 
-  obs.lane = lane
-  obs.y = 0
-  obs.type = type
-  obs.active = true
-  obs.passed = false
-
   // Moving zamboni: starts on one side, drives to the other
   if (isMovingZamboni) {
-    obs.moving = true
     const startLeft = Math.random() < 0.5
-    obs.movingX = startLeft ? GameState.LANE_X.left : GameState.LANE_X.right
-    obs.movingTargetX = startLeft ? GameState.LANE_X.right : GameState.LANE_X.left
-    obs.movingSpeed = 0.0002 + Math.random() * 0.0001 // varies slightly
-    obs.lane = startLeft ? 'left' : 'right' // initial lane for fallback
+    const movingX = startLeft ? GameState.LANE_X.left : GameState.LANE_X.right
+    const movingTargetX = startLeft ? GameState.LANE_X.right : GameState.LANE_X.left
+    activateObstacle(obs, {
+      lane: startLeft ? 'left' : 'right',
+      y: 0,
+      type,
+      width: obs.width,
+      secondLane: obs.secondLane,
+      moving: true,
+      movingX,
+      movingTargetX,
+      movingSpeed: 0.0002 + Math.random() * 0.0001,
+    })
   } else {
-    obs.moving = false
-    obs.movingX = GameState.LANE_X[lane]
-    obs.movingTargetX = GameState.LANE_X[lane]
-    obs.movingSpeed = 0
+    activateObstacle(obs, {
+      lane,
+      y: 0,
+      type,
+      width: obs.width,
+      secondLane: obs.secondLane,
+      movingX: GameState.LANE_X[lane],
+      movingTargetX: GameState.LANE_X[lane],
+    })
   }
 
   state.run.lastObstacleSpawnTime = now
@@ -183,7 +182,8 @@ export function updateObstacles(state: GameState, dt: number, viewportHeight: nu
     if (!obs.active) continue
     obs.y += speed * dt
     if (obs.y > 1.2) {
-      obs.active = false
+      resetObstacle(obs)
+      continue
     }
 
     // Animate moving zamboni across lanes
@@ -217,7 +217,7 @@ function isPlayerOverlapping(obs: Obstacle, state: GameState): boolean {
 export function checkCollisions(
   state: GameState,
   now: number,
-): 'hit' | 'deke_success' | 'passed' | null {
+): CollisionResult {
   for (const obs of state.obstacles) {
     if (!obs.active || obs.passed) continue
 

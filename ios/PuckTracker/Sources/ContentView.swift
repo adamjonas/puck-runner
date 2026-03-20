@@ -106,7 +106,7 @@ struct ContentView: View {
             classifier.update(position: position, confidence: confidence)
 
             let message = TrackingMessage(
-                type: "input",
+                type: SharedTrackerConfig.MessageTypes.input,
                 ts: Int64(Date().timeIntervalSince1970 * 1000),
                 raw: .init(x: position.x, y: position.y),
                 lane: classifier.currentLane.rawValue,

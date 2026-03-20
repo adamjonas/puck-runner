@@ -32,6 +32,7 @@ export class HudOverlayView {
   private readonly countdownNumberEl: HTMLDivElement
 
   private lastComboText = ''
+  private lastComboUntil = 0
   private comboFadeTimeout: ReturnType<typeof setTimeout> | null = null
 
   constructor(options: HudOverlayViewOptions) {
@@ -185,7 +186,7 @@ export class HudOverlayView {
       left: '50%',
       transform: 'translateX(-50%)',
       fontFamily: FONT_TEXT,
-      fontSize: '32px',
+      fontSize: scaled(32),
       fontWeight: '800',
       color: '#fff',
       textAlign: 'center',
@@ -313,8 +314,9 @@ export class HudOverlayView {
     }
 
     if (isPlaying && state.comboText && now < state.comboTextUntil) {
-      if (state.comboText !== this.lastComboText) {
+      if (state.comboText !== this.lastComboText || state.comboTextUntil !== this.lastComboUntil) {
         this.lastComboText = state.comboText
+        this.lastComboUntil = state.comboTextUntil
         this.comboEl.textContent = state.comboText
         this.comboEl.style.opacity = '1'
 

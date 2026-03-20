@@ -8,14 +8,14 @@ final class PositionClassifier: ObservableObject {
     // MARK: - Lane Constants (from protocol.ts)
 
     enum Constants {
-        static let leftMax: CGFloat = 0.3
-        static let deadZoneLeft: CGFloat = 0.33
-        static let deadZoneRight: CGFloat = 0.67
-        static let rightMin: CGFloat = 0.7
+        static let leftMax = SharedTrackerConfig.LaneBoundaries.leftMax
+        static let deadZoneLeft = SharedTrackerConfig.LaneBoundaries.deadZoneLeft
+        static let deadZoneRight = SharedTrackerConfig.LaneBoundaries.deadZoneRight
+        static let rightMin = SharedTrackerConfig.LaneBoundaries.rightMin
 
         // Deke thresholds (Y-axis, hysteresis)
-        static let dekeEnter: CGFloat = 0.25
-        static let dekeExit: CGFloat = 0.35
+        static let dekeEnter = SharedTrackerConfig.DekeThresholds.enter
+        static let dekeExit = SharedTrackerConfig.DekeThresholds.exit
 
         // Stickhandling detection
         static let minOscillationFrequency: Double = 1.5   // Hz — below this is just movement

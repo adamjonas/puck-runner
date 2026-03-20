@@ -17,8 +17,8 @@ final class WebSocketManager: ObservableObject {
 
     // MARK: - Configuration
 
-    private let port = 5173
-    private let path = "/ws/tracker"
+    private let port = SharedTrackerConfig.WebSocket.port
+    private let path = SharedTrackerConfig.WebSocket.trackerPath
 
     // MARK: - Reconnection (exponential backoff)
 

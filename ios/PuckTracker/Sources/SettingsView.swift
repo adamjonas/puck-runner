@@ -31,7 +31,7 @@ struct SettingsView: View {
                         Text("Port")
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("5173")
+                        Text(String(SharedTrackerConfig.WebSocket.port))
                             .font(.body.monospaced())
                             .foregroundColor(.secondary)
                     }
@@ -40,7 +40,7 @@ struct SettingsView: View {
                         Text("Endpoint")
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("/ws/tracker")
+                        Text(SharedTrackerConfig.WebSocket.trackerPath)
                             .font(.body.monospaced())
                             .foregroundColor(.secondary)
                     }

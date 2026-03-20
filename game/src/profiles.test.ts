@@ -5,6 +5,9 @@ import {
   deleteProfile,
   getLeaderboard,
   loadProfiles,
+  recordRunResult,
+  markTutorialComplete,
+  setTutorialComplete,
   updateProfile,
 } from './profiles'
 
@@ -219,5 +222,51 @@ describe('getLeaderboard', () => {
       'Wayne:200',
       'Cora:100',
     ])
+  })
+})
+
+describe('recordRunResult', () => {
+  it('increments games played and preserves tutorial progress updates separately', () => {
+    const result = recordRunResult('Cora', { score: 250, combo: 'TOP SHELF' })
+
+    expect(result).toMatchObject({
+      name: 'Cora',
+      highScore: 250,
+      gamesPlayed: 1,
+      bestCombo: 'TOP SHELF',
+      tutorialComplete: false,
+    })
+  })
+})
+
+describe('setTutorialComplete', () => {
+  it('marks tutorial complete without incrementing gamesPlayed', () => {
+    const result = setTutorialComplete('Cora')
+
+    expect(result).toMatchObject({
+      name: 'Cora',
+      tutorialComplete: true,
+      gamesPlayed: 0,
+    })
+    expect(loadProfiles().find((p) => p.name === 'Cora')?.tutorialComplete).toBe(true)
+    expect(loadProfiles().find((p) => p.name === 'Cora')?.gamesPlayed).toBe(0)
+  })
+
+  it('returns null for nonexistent profile', () => {
+    expect(setTutorialComplete('Gretzky')).toBeNull()
+  })
+
+  it('works with case-insensitive name matching', () => {
+    const result = setTutorialComplete('cora')
+
+    expect(result?.name).toBe('Cora')
+    expect(result?.tutorialComplete).toBe(true)
+  })
+})
+
+describe('markTutorialComplete', () => {
+  it('keeps tutorial completion separate from run recording', () => {
+    expect(markTutorialComplete('Cora')?.gamesPlayed).toBe(0)
+    expect(loadProfiles().find((p) => p.name === 'Cora')?.tutorialComplete).toBe(true)
   })
 })

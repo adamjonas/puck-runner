@@ -15,6 +15,36 @@ import {
 
 const GAME_OVER_SCORE_COUNT_MS = 1200
 
+export function formatGameDuration(elapsedMs: number): string {
+  const totalSeconds = Math.max(1, Math.floor(elapsedMs / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes === 0) return `${seconds}s`
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+export function buildGameOverMessage(
+  playerName: string,
+  elapsedMs: number,
+  isHighScore: boolean,
+): string {
+  const seconds = Math.max(1, Math.floor(elapsedMs / 1000))
+
+  if (isHighScore) {
+    return `${playerName} set the pace. New personal best in ${formatGameDuration(elapsedMs)}.`
+  }
+  if (seconds < 15) {
+    return `Nice try! You lasted ${seconds}s. One clean dodge streak and you are right back in it.`
+  }
+  if (seconds < 30) {
+    return `Good shift. You battled for ${seconds}s. Stay loose and attack the next run.`
+  }
+  if (seconds < 60) {
+    return `Strong effort. You held on for ${seconds}s. That was close to a heater.`
+  }
+  return `Great run. You stayed alive for ${formatGameDuration(elapsedMs)}. Keep pushing for the next breakthrough.`
+}
+
 interface GameOverOverlayViewOptions {
   root: HTMLDivElement
   onReplay: () => void
@@ -258,7 +288,7 @@ export class GameOverOverlayView {
   private beginCelebration(state: GameState, activeProfile: PlayerProfile | null): void {
     this.animationStart = state.now
     this.finalScore = state.score
-    this.isHighScore = state.score >= state.highScore && state.score > 0
+    this.isHighScore = state.score > state.highScore && state.score > 0
     this.message = this.buildMessage(state, activeProfile, this.isHighScore)
     this.gameOverScoreEl.style.animation = 'none'
     this.gameOverMessageEl.style.animation = 'none'
@@ -271,21 +301,7 @@ export class GameOverOverlayView {
     const playerName = activeProfile
       ? formatProfileLabel(activeProfile, true)
       : (state.playerName || 'Player')
-    const seconds = Math.max(1, Math.floor(state.elapsed / 1000))
-
-    if (isHighScore) {
-      return `${playerName} set the pace. New personal best in ${this.formatDuration(state.elapsed)}.`
-    }
-    if (seconds < 15) {
-      return `Nice try! You lasted ${seconds}s. One clean dodge streak and you are right back in it.`
-    }
-    if (seconds < 30) {
-      return `Good shift. You battled for ${seconds}s. Stay loose and attack the next run.`
-    }
-    if (seconds < 60) {
-      return `Strong effort. You held on for ${seconds}s. That was close to a heater.`
-    }
-    return `Great run. You stayed alive for ${this.formatDuration(state.elapsed)}. Keep pushing for the next breakthrough.`
+    return buildGameOverMessage(playerName, state.elapsed, isHighScore)
   }
 
   private updateActionCards(state: GameState): void {
@@ -378,10 +394,6 @@ export class GameOverOverlayView {
   }
 
   private formatDuration(elapsedMs: number): string {
-    const totalSeconds = Math.max(1, Math.floor(elapsedMs / 1000))
-    const minutes = Math.floor(totalSeconds / 60)
-    const seconds = totalSeconds % 60
-    if (minutes === 0) return `${seconds}s`
-    return `${minutes}:${String(seconds).padStart(2, '0')}`
+    return formatGameDuration(elapsedMs)
   }
 }

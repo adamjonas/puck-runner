@@ -1,4 +1,5 @@
 import type { Lane, GameScreenState } from '@shared/protocol'
+import { resetCoin, resetObstacle } from './world-entities'
 
 /**
  * Central GameState — single source of truth for all mutable game state.
@@ -217,16 +218,30 @@ export class GameState {
     this.gameOverAction = null
     this.gameOverActionStartedAt = 0
     this.gameOverActionProgress = 0
+    this.tutorialActive = false
+    this.tutorialText = ''
     this.run = GameState.createRunState()
-    for (const o of this.obstacles) { o.active = false; o.passed = false; o.moving = false }
-    for (const c of this.coins) { c.active = false; c.collected = false }
+    this.resetWorldObjects()
   }
 
   start(now: number): void {
+    this.startCountdown(now)
+  }
+
+  startCountdown(now: number): void {
     this.syncTime(now)
     this.reset()
     this.screen = 'countdown'
     this.countdownEnd = now + 3000
+  }
+
+  enterTutorial(now: number, speed: number): void {
+    this.syncTime(now)
+    this.reset()
+    this.screen = 'tutorial'
+    this.tutorialActive = true
+    this.startTime = now
+    this.speed = speed
   }
 
   beginPlaying(now: number): void {
@@ -335,6 +350,15 @@ export class GameState {
       if (this.score > this.highScore) {
         this.highScore = this.score
       }
+    }
+  }
+
+  resetWorldObjects(): void {
+    for (const obstacle of this.obstacles) {
+      resetObstacle(obstacle)
+    }
+    for (const coin of this.coins) {
+      resetCoin(coin)
     }
   }
 }

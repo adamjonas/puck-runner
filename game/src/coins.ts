@@ -1,6 +1,7 @@
 import type { Lane } from '@shared/protocol'
 import type { Coin } from './game-state'
 import { GameState } from './game-state'
+import { activateCoin, createInactiveCoin, resetCoin } from './world-entities'
 
 const POOL_SIZE = 30
 const LANES: Lane[] = ['left', 'center', 'right']
@@ -11,12 +12,7 @@ const COIN_VERTICAL_SPACING = 0.08
 export function createCoinPool(): Coin[] {
   const pool: Coin[] = []
   for (let i = 0; i < POOL_SIZE; i++) {
-    pool.push({
-      lane: 'center',
-      y: 0,
-      active: false,
-      collected: false,
-    })
+    pool.push(createInactiveCoin())
   }
   return pool
 }
@@ -64,10 +60,7 @@ export function spawnCoins(state: GameState, now: number): void {
 
   for (let i = 0; i < groupSize; i++) {
     const coin = available[i]
-    coin.lane = lane
-    coin.y = -(i * COIN_VERTICAL_SPACING) // stagger upward from y=0
-    coin.active = true
-    coin.collected = false
+    activateCoin(coin, lane, -(i * COIN_VERTICAL_SPACING))
   }
 
   state.run.lastCoinSpawnTime = now
@@ -80,7 +73,7 @@ export function updateCoins(state: GameState, dt: number, viewportHeight: number
     coin.y += speed * dt
 
     if (coin.y > 1.2) {
-      coin.active = false
+      resetCoin(coin)
     }
   }
 }

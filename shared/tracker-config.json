@@ -1,0 +1,21 @@
+{
+  "laneBoundaries": {
+    "leftMax": 0.3,
+    "deadZoneLeft": 0.33,
+    "deadZoneRight": 0.67,
+    "rightMin": 0.7
+  },
+  "dekeThresholds": {
+    "enter": 0.25,
+    "exit": 0.35
+  },
+  "webSocket": {
+    "port": 5173,
+    "trackerPath": "/ws/tracker",
+    "gamePath": "/ws/game"
+  },
+  "messageTypes": {
+    "input": "input",
+    "state": "state"
+  }
+}

@@ -1,5 +1,10 @@
 import type { Plugin, ViteDevServer } from 'vite'
 import { WebSocketServer, WebSocket } from 'ws'
+import trackerConfig from '../../shared/tracker-config.json'
+
+const {
+  webSocket: { port, trackerPath, gamePath },
+} = trackerConfig
 
 /**
  * Vite plugin that runs a WebSocket relay server.
@@ -27,11 +32,11 @@ export function wsRelayPlugin(): Plugin {
       server.httpServer?.on('upgrade', (request, socket, head) => {
         const url = new URL(request.url || '', `http://${request.headers.host}`)
 
-        if (url.pathname === '/ws/tracker') {
+        if (url.pathname === trackerPath) {
           wss!.handleUpgrade(request, socket, head, (ws) => {
             wss!.emit('connection', ws, request, 'tracker')
           })
-        } else if (url.pathname === '/ws/game') {
+        } else if (url.pathname === gamePath) {
           wss!.handleUpgrade(request, socket, head, (ws) => {
             wss!.emit('connection', ws, request, 'game')
           })
@@ -91,8 +96,8 @@ export function wsRelayPlugin(): Plugin {
       })
 
       console.log('[ws-relay] WebSocket relay ready')
-      console.log('[ws-relay]   Tracker endpoint: ws://<host>:5173/ws/tracker')
-      console.log('[ws-relay]   Game endpoint:    ws://<host>:5173/ws/game')
+      console.log(`[ws-relay]   Tracker endpoint: ws://<host>:${port}${trackerPath}`)
+      console.log(`[ws-relay]   Game endpoint:    ws://<host>:${port}${gamePath}`)
     },
   }
 }

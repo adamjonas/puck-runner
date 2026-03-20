@@ -141,4 +141,20 @@ describe('GameState', () => {
     expect(state.confidence).toBe(0)
     expect(state.elapsed).toBe(0)
   })
+
+  describe('reset', () => {
+    it('reset() clears tutorialActive', () => {
+      const state = new GameState()
+      state.tutorialActive = true
+      state.reset()
+      expect(state.tutorialActive).toBe(false)
+    })
+
+    it('reset() clears tutorialText', () => {
+      const state = new GameState()
+      state.tutorialText = 'test'
+      state.reset()
+      expect(state.tutorialText).toBe('')
+    })
+  })
 })

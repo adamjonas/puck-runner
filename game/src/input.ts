@@ -1,4 +1,4 @@
-import type { TrackingInput, Lane } from '@shared/protocol'
+import { MESSAGE_TYPES, WS_ENDPOINTS, type TrackingInput, type Lane } from '@shared/protocol'
 import type { GameState } from './game-state'
 
 /**
@@ -91,7 +91,7 @@ export class InputManager {
 
   connect(): void {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${location.host}/ws/game`
+    const url = `${protocol}//${location.host}${WS_ENDPOINTS.gamePath}`
 
     try {
       this.ws = new WebSocket(url)
@@ -108,7 +108,7 @@ export class InputManager {
     this.ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
-        if (msg.type === 'input') {
+        if (msg.type === MESSAGE_TYPES.input) {
           this.handleTrackingInput(msg as TrackingInput)
         } else if (msg.type === 'tracker_connected') {
           this.state.trackerConnected = true

@@ -75,6 +75,7 @@ export class CoinViewPool {
       mesh.visible = true
       glow.visible = true
       mesh.scale.setScalar(1)
+      glow.scale.setScalar(1)
 
       const worldX = this.laneX[coin.lane] ?? 0
       const worldZ = this.farZ + coin.y * (this.nearZ - this.farZ)
