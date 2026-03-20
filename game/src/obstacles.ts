@@ -194,6 +194,17 @@ export function updateObstacles(state: GameState, dt: number, viewportHeight: nu
           (dir < 0 && obs.movingX <= obs.movingTargetX)) {
         obs.movingX = obs.movingTargetX
       }
+      // Update lane to match current position (for spawn-safety checks)
+      let closestLane: Lane = obs.lane
+      let closestDist = Infinity
+      for (const l of LANES) {
+        const d = Math.abs(obs.movingX - GameState.LANE_X[l])
+        if (d < closestDist) {
+          closestDist = d
+          closestLane = l
+        }
+      }
+      obs.lane = closestLane
     }
   }
 }
@@ -217,8 +228,12 @@ export function checkCollisions(
   state: GameState,
   now: number,
 ): CollisionResult {
+  // Process ALL obstacles per frame (priority: hit > deke_success > passed)
+  let result: CollisionResult = null
+
   for (const obs of state.obstacles) {
     if (!obs.active || obs.passed) continue
+    if (state.screen === 'game_over') break
 
     // Check if obstacle has passed the player line
     if (obs.y > PLAYER_Y + HIT_THRESHOLD) {
@@ -228,19 +243,22 @@ export function checkCollisions(
       const overlapping = isPlayerOverlapping(obs, state)
 
       if (!overlapping) {
-        return 'passed'
+        if (!result) result = 'passed'
+        continue
       }
 
       if (state.isDekeInvincible) {
         state.lastDekeSuccessTime = now
-        return 'deke_success'
+        if (result !== 'hit') result = 'deke_success'
+        continue
       }
 
       if (state.isLaneTransitioning) continue
 
       // Obstacle passed through player — collision
       state.loseLife()
-      return 'hit'
+      result = 'hit'
+      continue
     }
 
     // Check active collision zone
@@ -253,7 +271,8 @@ export function checkCollisions(
     if (state.isDekeInvincible) {
       obs.passed = true
       state.lastDekeSuccessTime = now
-      return 'deke_success'
+      if (result !== 'hit') result = 'deke_success'
+      continue
     }
 
     if (state.isLaneTransitioning) continue
@@ -261,8 +280,8 @@ export function checkCollisions(
     // Collision!
     obs.passed = true
     state.loseLife()
-    return 'hit'
+    result = 'hit'
   }
 
-  return null
+  return result
 }
