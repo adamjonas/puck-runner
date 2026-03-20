@@ -70,6 +70,8 @@ export class Renderer {
   // Title-screen camera orbit
   private titleAngle = 0
 
+  private readonly resizeHandler: () => void
+
   constructor(canvas: HTMLCanvasElement) {
     // Try WebGL
     let gl: WebGLRenderingContext | null = null
@@ -151,7 +153,8 @@ export class Renderer {
     this.obstacleViews.loadAsset('crack', '/models/broken-ice-original.glb', RINK_W * 0.24)
 
     // Resize
-    window.addEventListener('resize', () => this.onResize())
+    this.resizeHandler = () => this.onResize()
+    window.addEventListener('resize', this.resizeHandler)
   }
 
   // -----------------------------------------------------------------------
@@ -250,5 +253,10 @@ export class Renderer {
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(w, h)
+  }
+
+  dispose(): void {
+    window.removeEventListener('resize', this.resizeHandler)
+    this.renderer.dispose()
   }
 }
