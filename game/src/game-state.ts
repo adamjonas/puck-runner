@@ -40,7 +40,9 @@ export interface RunState {
   dekeUnlockAnnounced: boolean
   onFireAnnounced: boolean
   lastObstacleSpawnTime: number
+  nextObstacleSpawnInterval: number
   lastCoinSpawnTime: number
+  nextCoinSpawnInterval: number
 }
 
 export type GameOverAction = 'menu' | 'replay' | null
@@ -80,6 +82,7 @@ export class GameState {
   score = 0
   lives = 3
   highScore = 0
+  isNewHighScore = false
 
   // Speed (increases over time)
   speed = 1.0 // multiplier, starts at 1.0
@@ -152,7 +155,9 @@ export class GameState {
       dekeUnlockAnnounced: false,
       onFireAnnounced: false,
       lastObstacleSpawnTime: 0,
+      nextObstacleSpawnInterval: 3000 + Math.random() * 1000,
       lastCoinSpawnTime: 0,
+      nextCoinSpawnInterval: 2000 + Math.random() * 1000,
     }
   }
 
@@ -215,6 +220,7 @@ export class GameState {
     this.lastCoinCollectTime = 0
     this.comboText = ''
     this.comboTextUntil = 0
+    this.isNewHighScore = false
     this.gameOverAction = null
     this.gameOverActionStartedAt = 0
     this.gameOverActionProgress = 0
@@ -346,8 +352,9 @@ export class GameState {
     this.lives--
     if (this.lives <= 0) {
       this.screen = 'game_over'
-      // Update high score
+      // Update high score (set flag before updating so overlay can detect it)
       if (this.score > this.highScore) {
+        this.isNewHighScore = true
         this.highScore = this.score
       }
     }

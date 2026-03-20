@@ -288,7 +288,7 @@ export class GameOverOverlayView {
   private beginCelebration(state: GameState, activeProfile: PlayerProfile | null): void {
     this.animationStart = state.now
     this.finalScore = state.score
-    this.isHighScore = state.score > state.highScore && state.score > 0
+    this.isHighScore = state.isNewHighScore && state.score > 0
     this.message = this.buildMessage(state, activeProfile, this.isHighScore)
     this.gameOverScoreEl.style.animation = 'none'
     this.gameOverMessageEl.style.animation = 'none'
