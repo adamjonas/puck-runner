@@ -159,7 +159,7 @@ export class InputManager {
     this.state.confidence = input.confidence
     this.state.rawX = input.raw.x
     this.state.rawY = input.raw.y
-    this.state.latency = now - input.ts
+    this.state.latency = Date.now() - input.ts
 
     if (this.state.screen === 'game_over') {
       const action = this.state.updateGameOverAction(
