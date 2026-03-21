@@ -38,9 +38,15 @@ describe('TutorialManager', () => {
     expect(tutorial.getStepIndex()).toBe(0)
   })
 
-  it('getTotalSteps() returns 4 (LANES, OBSTACLES, COINS, STICKHANDLING)', () => {
+  it('getTotalSteps() returns 4 for tutorial mode', () => {
     expect(tutorial.getTotalSteps(false)).toBe(4)
     expect(tutorial.getTotalSteps(true)).toBe(4)
+  })
+
+  it('getTotalSteps() returns 3 for practice mode', () => {
+    tutorial.start(state, { practiceMode: true })
+    expect(tutorial.getTotalSteps(false)).toBe(3)
+    expect(tutorial.getTotalSteps(true)).toBe(3)
   })
 
   // --- Step 1: LANES ---
@@ -132,6 +138,20 @@ describe('TutorialManager', () => {
     tutorial.onCoinCollected()
     tutorial.onCoinCollected()
     expect(tutorial.getStep()).toBe(TutorialStep.STICKHANDLING)
+  })
+
+  it('advances directly to READY after coins in practice mode', () => {
+    tutorial.start(state, { practiceMode: true })
+
+    tutorial.onLaneVisited('left')
+    tutorial.onLaneVisited('center')
+    tutorial.onLaneVisited('right')
+    tutorial.onObstacleDodged()
+    tutorial.onCoinCollected()
+    tutorial.onCoinCollected()
+    tutorial.onCoinCollected()
+
+    expect(tutorial.getStep()).toBe(TutorialStep.READY)
   })
 
   it('shows keyboard hint for stickhandling when no tracker', () => {

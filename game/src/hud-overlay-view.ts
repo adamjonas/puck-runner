@@ -22,6 +22,7 @@ export class HudOverlayView {
   private readonly announcerTextEl: HTMLSpanElement
   private readonly speedEl: HTMLDivElement
   private readonly stickhandlingEl: HTMLDivElement
+  private readonly latencyEl: HTMLDivElement
   private readonly playerNameEl: HTMLDivElement
   private readonly tutorialInstructionEl: HTMLDivElement
   private readonly countdownOverlay: HTMLDivElement
@@ -43,6 +44,7 @@ export class HudOverlayView {
     this.announcerTextEl = elements.announcerTextEl
     this.speedEl = elements.speedEl
     this.stickhandlingEl = elements.stickhandlingEl
+    this.latencyEl = elements.latencyEl
     this.playerNameEl = elements.playerNameEl
     this.tutorialInstructionEl = elements.tutorialInstructionEl
     this.countdownOverlay = elements.countdownOverlay
@@ -167,6 +169,13 @@ export class HudOverlayView {
       this.stickhandlingEl.style.opacity = '1'
     } else {
       this.stickhandlingEl.style.opacity = '0'
+    }
+
+    if (state.latencyBreakdown) {
+      this.latencyEl.textContent = state.latencyBreakdown
+      this.latencyEl.style.opacity = '1'
+    } else {
+      this.latencyEl.style.opacity = '0'
     }
 
     if (state.screen === 'tutorial' && state.tutorialText) {

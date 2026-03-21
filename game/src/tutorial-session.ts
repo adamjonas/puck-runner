@@ -33,7 +33,7 @@ export class TutorialSession {
   start(isPractice: boolean, now: number): void {
     this.practiceMode = isPractice
     this.state.enterTutorial(now, getTutorialStepSpeed(TutorialStep.LANES))
-    this.tutorial.start(this.state)
+    this.tutorial.start(this.state, { practiceMode: isPractice })
     this.lastStep = TutorialStep.LANES
     this.obstacleCount = 0
     announceTutorialLanes(this.announcer)

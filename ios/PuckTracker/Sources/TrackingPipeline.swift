@@ -10,11 +10,11 @@ enum TrackingPipeline {
     ) {
         cameraManager.requestPermission()
 
-        cameraManager.onFrame = { [weak ballDetector] pixelBuffer in
-            ballDetector?.processFrame(pixelBuffer)
+        cameraManager.onFrame = { [weak ballDetector] frame in
+            ballDetector?.processFrame(frame)
         }
 
-        ballDetector.onPositionUpdate = { [weak positionClassifier, weak webSocketManager] position, confidence in
+        ballDetector.onPositionUpdate = { [weak positionClassifier, weak webSocketManager] position, confidence, timing in
             guard let classifier = positionClassifier,
                   let ws = webSocketManager else { return }
 
@@ -22,7 +22,8 @@ enum TrackingPipeline {
             ws.send(makeTrackingMessage(
                 position: position,
                 confidence: confidence,
-                classifier: classifier
+                classifier: classifier,
+                timing: timing
             ))
         }
 
@@ -44,7 +45,8 @@ enum TrackingPipeline {
     private static func makeTrackingMessage(
         position: CGPoint,
         confidence: Double,
-        classifier: PositionClassifier
+        classifier: PositionClassifier,
+        timing: DetectionTiming
     ) -> TrackingMessage {
         TrackingMessage(
             type: SharedTrackerConfig.MessageTypes.input,
@@ -57,6 +59,12 @@ enum TrackingPipeline {
                 active: classifier.stickhandlingActive,
                 frequency: classifier.stickhandlingFrequency,
                 amplitude: classifier.stickhandlingAmplitude
+            ),
+            debugTiming: .init(
+                frameId: timing.frameId,
+                captureTs: timing.captureTs,
+                detectDoneTs: timing.detectDoneTs,
+                sendTs: 0
             )
         )
     }

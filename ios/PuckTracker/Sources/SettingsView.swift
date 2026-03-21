@@ -3,15 +3,36 @@ import SwiftUI
 /// Settings view for entering the Mac's IP address for WebSocket connection.
 struct SettingsView: View {
     @EnvironmentObject var webSocketManager: WebSocketManager
+    @EnvironmentObject var ballDetector: BallDetector
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("serverHost") private var serverHost: String = "192.168.1.100"
+    @AppStorage("detectionMode") private var detectionModeRaw: String = BallDetector.DetectionMode.brightBall.rawValue
     @State private var editingHost: String = ""
     @State private var showResetConfirmation = false
 
     var body: some View {
         NavigationView {
             Form {
+                Section {
+                    Picker("Tracking Object", selection: $detectionModeRaw) {
+                        Text("Tennis Ball").tag(BallDetector.DetectionMode.brightBall.rawValue)
+                        Text("Dark Puck").tag(BallDetector.DetectionMode.darkPuck.rawValue)
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: detectionModeRaw) { newValue in
+                        if let newMode = BallDetector.DetectionMode(rawValue: newValue) {
+                            ballDetector.mode = newMode
+                        }
+                    }
+                } header: {
+                    Text("Detection Mode")
+                } footer: {
+                    Text(detectionModeRaw == BallDetector.DetectionMode.darkPuck.rawValue
+                        ? "Tracks a dark puck on a light surface by finding the darkest cluster."
+                        : "Tracks a yellow-green tennis ball using color detection.")
+                }
+
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Server IP Address")

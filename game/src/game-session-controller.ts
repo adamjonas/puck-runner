@@ -29,6 +29,7 @@ export class GameSessionController {
     this.state = new GameState()
     this.renderer = new Renderer(canvas)
     this.input = new InputManager(this.state, {
+      onLatencyExportRequested: () => this.exportLatencyCsv(),
       onStartRequested: (now) => this.startNewRun(now),
       onReplayRequested: (now) => this.startNewRun(now),
       onMenuRequested: () => this.returnToMainMenu(),
@@ -98,6 +99,7 @@ export class GameSessionController {
 
     this.runtime.update(now, dt)
     this.renderer.render(this.state, dt)
+    this.input.recordRenderedFrame(now)
     this.overlay.update(this.state, this.announcer)
 
     requestAnimationFrame(this.gameLoop)
@@ -130,6 +132,10 @@ export class GameSessionController {
     this.resetSessionSystems()
     const now = performance.now()
     this.tutorial.start(isPractice, now)
+  }
+
+  private exportLatencyCsv(): void {
+    this.input.exportLatencyCsv()
   }
 
   private resetSessionSystems(): void {

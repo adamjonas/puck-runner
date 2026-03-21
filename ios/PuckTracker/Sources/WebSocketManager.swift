@@ -87,9 +87,14 @@ final class WebSocketManager: ObservableObject {
         let now = ProcessInfo.processInfo.systemUptime
         guard now - lastSendTime >= minSendInterval else { return }
         lastSendTime = now
+        var outboundMessage = message
+        if var timing = outboundMessage.debugTiming {
+            timing.sendTs = currentUptimeMs()
+            outboundMessage.debugTiming = timing
+        }
 
         do {
-            let data = try encoder.encode(message)
+            let data = try encoder.encode(outboundMessage)
             guard let jsonString = String(data: data, encoding: .utf8) else { return }
             webSocketTask?.send(.string(jsonString)) { [weak self] error in
                 if let error {
@@ -163,11 +168,41 @@ final class WebSocketManager: ObservableObject {
     }
 
     private func handleReceivedMessage(_ text: String) {
-        // Future: parse GameStateMessage and forward to game state handler
-        // For Phase 1 PoC, we just log it
+        if let data = text.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let type = object["type"] as? String,
+           type == "clock_sync_request",
+           let t1Value = object["t1"] as? NSNumber {
+            sendClockSyncResponse(t1: t1Value.doubleValue)
+            return
+        }
+
         #if DEBUG
         print("[WebSocket] Received: \(text.prefix(100))")
         #endif
+    }
+
+    private func sendClockSyncResponse(t1: Double) {
+        guard connectionState == .connected else { return }
+
+        let response = ClockSyncResponseMessage(
+            type: "clock_sync_response",
+            t1: t1,
+            t2: currentUptimeMs()
+        )
+
+        do {
+            let data = try encoder.encode(response)
+            guard let jsonString = String(data: data, encoding: .utf8) else { return }
+            webSocketTask?.send(.string(jsonString)) { [weak self] error in
+                if let error {
+                    print("[WebSocket] Clock sync send error: \(error.localizedDescription)")
+                    self?.handleDisconnection()
+                }
+            }
+        } catch {
+            print("[WebSocket] Clock sync encoding error: \(error)")
+        }
     }
 
     // MARK: - Reconnection with Exponential Backoff
@@ -212,6 +247,7 @@ struct TrackingMessage: Codable {
     let deke: Bool
     let confidence: Double
     let stickhandling: Stickhandling
+    var debugTiming: DebugTiming?
 
     struct RawPosition: Codable {
         let x: Double
@@ -223,4 +259,17 @@ struct TrackingMessage: Codable {
         let frequency: Double
         let amplitude: Double
     }
+
+    struct DebugTiming: Codable {
+        let frameId: Int64
+        let captureTs: Double
+        let detectDoneTs: Double
+        var sendTs: Double
+    }
+}
+
+struct ClockSyncResponseMessage: Codable {
+    let type: String
+    let t1: Double
+    let t2: Double
 }

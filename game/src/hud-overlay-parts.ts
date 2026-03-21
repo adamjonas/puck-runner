@@ -17,6 +17,7 @@ export interface HudOverlayElements {
   announcerTextEl: HTMLSpanElement
   speedEl: HTMLDivElement
   stickhandlingEl: HTMLDivElement
+  latencyEl: HTMLDivElement
   playerNameEl: HTMLDivElement
   tutorialInstructionEl: HTMLDivElement
   countdownOverlay: HTMLDivElement
@@ -169,6 +170,26 @@ export function createHudOverlayElements(root: HTMLDivElement): HudOverlayElemen
   })
   root.appendChild(stickhandlingEl)
 
+  const latencyEl = div({
+    position: 'absolute',
+    top: '44px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    fontFamily: FONT_MONO,
+    fontSize: scaled(11),
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+    padding: '4px 10px',
+    borderRadius: '10px',
+    background: 'rgba(0,0,0,0.35)',
+    backdropFilter: 'blur(4px)',
+    opacity: '0',
+    transition: 'opacity 0.3s ease',
+    whiteSpace: 'nowrap',
+    pointerEvents: 'none',
+  })
+  root.appendChild(latencyEl)
+
   const tutorialInstructionEl = div({
     position: 'absolute',
     top: '20%',
@@ -238,6 +259,7 @@ export function createHudOverlayElements(root: HTMLDivElement): HudOverlayElemen
     announcerTextEl,
     speedEl,
     stickhandlingEl,
+    latencyEl,
     playerNameEl,
     tutorialInstructionEl,
     countdownOverlay,

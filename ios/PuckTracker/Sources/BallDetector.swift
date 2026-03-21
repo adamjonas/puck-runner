@@ -2,11 +2,28 @@ import CoreImage
 import UIKit
 import Combine
 
-/// Detects a yellow-green tennis ball using HSV color thresholds with ROI tracking.
-/// HSV is much more robust across lighting conditions than raw RGB thresholds.
-/// ROI (region of interest) searches near the last known position first, falling
-/// back to full-frame scan only when the ball moves far or is lost.
+struct DetectionTiming {
+    let frameId: Int64
+    let captureTs: Double
+    let detectDoneTs: Double
+}
+
+/// Detects a tracking object (bright tennis ball or dark puck) using color/brightness
+/// thresholds with ROI tracking. Supports two detection modes:
+///   - `.brightBall`: HSV color match for yellow-green tennis ball
+///   - `.darkPuck`: low-brightness match for black puck on light surface
 final class BallDetector: ObservableObject {
+
+    // MARK: - Detection Mode
+
+    enum DetectionMode: String, CaseIterable {
+        case brightBall  // yellow-green tennis ball (HSV color match)
+        case darkPuck    // black puck on light surface (low brightness)
+    }
+
+    @Published var mode: DetectionMode = .brightBall {
+        didSet { if mode != oldValue { resetSmoothing() } }
+    }
 
     // MARK: - Published State
 
@@ -14,19 +31,29 @@ final class BallDetector: ObservableObject {
     @Published var confidence: Double = 0.0
 
     /// Callback fired after each frame is processed
-    var onPositionUpdate: ((CGPoint, Double) -> Void)?
+    var onPositionUpdate: ((CGPoint, Double, DetectionTiming) -> Void)?
 
-    // MARK: - HSV Thresholds (tunable for yellow-green tennis ball)
-    // Tennis ball in HSV: H ~35-85°, S >= 0.25, V >= 0.20
-    // These are far more stable across lighting than RGB thresholds.
+    // MARK: - Bright Ball Thresholds (HSV, for yellow-green tennis ball)
     var minHue: Double = 35.0     // degrees (yellow end)
     var maxHue: Double = 85.0     // degrees (green end)
     var minSaturation: Double = 0.25
     var minValue: Double = 0.20
 
-    // RGB pre-filter (fast rejection of obviously non-matching pixels)
+    // RGB pre-filter for bright ball (fast rejection)
     private let preFilterMinG: UInt8 = 80
     private let preFilterMinRG: UInt8 = 100
+
+    // MARK: - Dark Puck Thresholds (brightness-based)
+    /// Maximum brightness (0-255) for a pixel to count as "dark"
+    var maxDarkBrightness: UInt8 = 80
+    /// Dark puck candidates should be notably darker than their local surroundings.
+    private let minDarkPuckContrast: Double = 35.0
+    /// Reject tiny specks and overly large dark blobs.
+    private let minDarkPuckMatchCount = 12
+    private let maxDarkPuckMatchCount = 140
+    /// Dark puck should look like a compact, roughly round cluster.
+    private let minDarkPuckFillRatio: Double = 0.45
+    private let maxDarkPuckAspectRatio: Double = 1.8
 
     // MARK: - ROI Tracking
 
@@ -61,42 +88,46 @@ final class BallDetector: ObservableObject {
 
     // MARK: - Frame Processing
 
-    func processFrame(_ pixelBuffer: CVPixelBuffer) {
+    func processFrame(_ frame: CapturedFrame) {
         guard !isProcessing else { return }
         isProcessing = true
 
         processingQueue.async { [weak self] in
             defer { self?.isProcessing = false }
-            self?.detectBall(in: pixelBuffer)
+            self?.detectBall(in: frame)
         }
     }
 
-    // MARK: - HSV Pixel Matching
+    // MARK: - Pixel Matching
 
-    /// Check if an RGB pixel matches the tennis ball color in HSV space.
-    /// Uses a fast RGB pre-filter to reject obviously non-matching pixels.
+    /// Routes to the appropriate matcher based on current detection mode.
     @inline(__always)
     private func isMatchingPixel(r: UInt8, g: UInt8, b: UInt8) -> Bool {
-        // Fast RGB pre-filter: reject dark or low-green pixels
+        switch mode {
+        case .brightBall: return isBrightBallPixel(r: r, g: g, b: b)
+        case .darkPuck:   return isDarkPuckPixel(r: r, g: g, b: b)
+        }
+    }
+
+    @inline(__always)
+    private func pixelBrightness(r: UInt8, g: UInt8, b: UInt8) -> UInt8 {
+        max(r, g, b)
+    }
+
+    /// Bright ball: HSV color match for yellow-green tennis ball.
+    @inline(__always)
+    private func isBrightBallPixel(r: UInt8, g: UInt8, b: UInt8) -> Bool {
         guard g >= preFilterMinG && max(r, g) >= preFilterMinRG else { return false }
 
-        // Convert to HSV using integer-friendly math
         let ri = Int(r), gi = Int(g), bi = Int(b)
         let maxC = max(ri, gi, bi)
-        let minC = min(ri, gi, bi)
-        let delta = maxC - minC
+        let delta = maxC - min(ri, gi, bi)
 
-        // Value check: maxC/255 >= minValue → maxC >= minValue * 255
         guard maxC >= Int(minValue * 255.0) else { return false }
-
-        // Saturation check: delta/maxC >= minSaturation → delta * 100 >= maxC * minSat * 100
         guard maxC > 0 else { return false }
         guard delta * 100 >= maxC * Int(minSaturation * 100.0) else { return false }
-
-        // Achromatic (delta=0) can't be a colored ball
         guard delta > 0 else { return false }
 
-        // Hue calculation (in degrees, 0-360)
         let hue: Double
         if maxC == ri {
             let sector = Double(gi - bi) / Double(delta)
@@ -104,21 +135,27 @@ final class BallDetector: ObservableObject {
         } else if maxC == gi {
             hue = 60.0 * (Double(bi - ri) / Double(delta) + 2.0)
         } else {
-            // Blue max — definitely not a tennis ball
             return false
         }
 
         return hue >= minHue && hue <= maxHue
     }
 
+    /// Dark puck: matches pixels darker than `maxDarkBrightness` on any channel.
+    @inline(__always)
+    private func isDarkPuckPixel(r: UInt8, g: UInt8, b: UInt8) -> Bool {
+        return pixelBrightness(r: r, g: g, b: b) <= maxDarkBrightness
+    }
+
     // MARK: - Detection
 
-    private func detectBall(in pixelBuffer: CVPixelBuffer) {
+    private func detectBall(in frame: CapturedFrame) {
+        let pixelBuffer = frame.pixelBuffer
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
 
         guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
-            publishBallLost()
+            publishBallLost(frame)
             return
         }
 
@@ -177,7 +214,7 @@ final class BallDetector: ObservableObject {
         }
 
         guard bestCount >= 3 else {
-            publishBallLost()
+            publishBallLost(frame)
             return
         }
 
@@ -194,6 +231,13 @@ final class BallDetector: ObservableObject {
         var sumX: Double = 0
         var sumY: Double = 0
         var matchCount: Double = 0
+        var sampledCount = 0
+        var totalBrightness: Double = 0
+        var matchedBrightness: Double = 0
+        var matchedMinX = Int.max
+        var matchedMaxX = Int.min
+        var matchedMinY = Int.max
+        var matchedMaxY = Int.min
 
         for y in stride(from: regionMinY, to: regionMaxY, by: step) {
             let rowOffset = y * bytesPerRow
@@ -211,17 +255,44 @@ final class BallDetector: ObservableObject {
                     b = buffer[pixelOffset + 2]
                 }
 
+                let brightness = Double(pixelBrightness(r: r, g: g, b: b))
+                sampledCount += 1
+                totalBrightness += brightness
+
                 if isMatchingPixel(r: r, g: g, b: b) {
                     sumX += Double(x)
                     sumY += Double(y)
                     matchCount += 1
+                    matchedBrightness += brightness
+                    matchedMinX = min(matchedMinX, x)
+                    matchedMaxX = max(matchedMaxX, x)
+                    matchedMinY = min(matchedMinY, y)
+                    matchedMaxY = max(matchedMaxY, y)
                 }
             }
         }
 
         guard matchCount >= 5 else {
-            publishBallLost()
+            publishBallLost(frame)
             return
+        }
+
+        if mode == .darkPuck {
+            let darkPuckValid = isValidDarkPuckCandidate(
+                matchCount: Int(matchCount),
+                sampledCount: sampledCount,
+                matchedBrightness: matchedBrightness,
+                totalBrightness: totalBrightness,
+                matchedMinX: matchedMinX,
+                matchedMaxX: matchedMaxX,
+                matchedMinY: matchedMinY,
+                matchedMaxY: matchedMaxY,
+                step: step
+            )
+            guard darkPuckValid else {
+                publishBallLost(frame)
+                return
+            }
         }
 
         // Centroid, normalized to 0.0 - 1.0 in the camera buffer's native portrait space
@@ -253,11 +324,16 @@ final class BallDetector: ObservableObject {
         }
 
         let clampedConfidence = min(max(rawConfidence, 0.0), 1.0)
+        let detectionTiming = DetectionTiming(
+            frameId: frame.frameId,
+            captureTs: frame.captureTs,
+            detectDoneTs: currentUptimeMs()
+        )
 
         DispatchQueue.main.async { [weak self] in
             self?.smoothedPosition = smoothed
             self?.confidence = clampedConfidence
-            self?.onPositionUpdate?(smoothed, clampedConfidence)
+            self?.onPositionUpdate?(smoothed, clampedConfidence, detectionTiming)
         }
     }
 
@@ -334,14 +410,59 @@ final class BallDetector: ObservableObject {
         )
     }
 
+    private func isValidDarkPuckCandidate(
+        matchCount: Int,
+        sampledCount: Int,
+        matchedBrightness: Double,
+        totalBrightness: Double,
+        matchedMinX: Int,
+        matchedMaxX: Int,
+        matchedMinY: Int,
+        matchedMaxY: Int,
+        step: Int
+    ) -> Bool {
+        guard matchCount >= minDarkPuckMatchCount && matchCount <= maxDarkPuckMatchCount else {
+            return false
+        }
+        guard sampledCount > matchCount else { return false }
+        guard matchedMinX <= matchedMaxX && matchedMinY <= matchedMaxY else { return false }
+
+        let bboxWidthSamples = ((matchedMaxX - matchedMinX) / step) + 1
+        let bboxHeightSamples = ((matchedMaxY - matchedMinY) / step) + 1
+        guard bboxWidthSamples > 0 && bboxHeightSamples > 0 else { return false }
+
+        let bboxSampleCount = bboxWidthSamples * bboxHeightSamples
+        let fillRatio = Double(matchCount) / Double(max(bboxSampleCount, 1))
+        let aspectRatio = Double(max(bboxWidthSamples, bboxHeightSamples))
+            / Double(max(min(bboxWidthSamples, bboxHeightSamples), 1))
+
+        let matchedAverageBrightness = matchedBrightness / Double(matchCount)
+        let surroundingBrightness = totalBrightness - matchedBrightness
+        let surroundingAverageBrightness = surroundingBrightness / Double(sampledCount - matchCount)
+        let contrast = surroundingAverageBrightness - matchedAverageBrightness
+
+        return fillRatio >= minDarkPuckFillRatio
+            && aspectRatio <= maxDarkPuckAspectRatio
+            && contrast >= minDarkPuckContrast
+    }
+
     // MARK: - Ball Lost
 
-    private func publishBallLost() {
+    private func publishBallLost(_ frame: CapturedFrame) {
         resetSmoothing()
+        let detectionTiming = DetectionTiming(
+            frameId: frame.frameId,
+            captureTs: frame.captureTs,
+            detectDoneTs: currentUptimeMs()
+        )
 
         DispatchQueue.main.async { [weak self] in
             self?.confidence = 0.0
-            self?.onPositionUpdate?(self?.smoothedPosition ?? CGPoint(x: 0.5, y: 0.5), 0.0)
+            self?.onPositionUpdate?(
+                self?.smoothedPosition ?? CGPoint(x: 0.5, y: 0.5),
+                0.0,
+                detectionTiming
+            )
         }
     }
 

@@ -3,6 +3,7 @@ import type { GameState } from './game-state'
 import { shouldSuppressGlobalKeydown } from './dom-utils'
 
 interface KeyboardInputOptions {
+  onLatencyExportRequested?: () => void
   onStartRequested?: (now: number) => void
   onMenuRequested?: () => void
 }
@@ -21,6 +22,12 @@ export class KeyboardInput {
 
     this.keydownHandler = (e) => {
       if (shouldSuppressGlobalKeydown(e.target, e.key)) return
+
+      if (e.shiftKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault()
+        this.options.onLatencyExportRequested?.()
+        return
+      }
 
       if (this.state.screen === 'game_over') {
         if (e.key === 'Escape' || e.key.toLowerCase() === 'm') {

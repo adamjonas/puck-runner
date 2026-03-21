@@ -36,6 +36,7 @@ const OBSTACLES_REQUIRED = 1
 export class TutorialManager {
   private step = TutorialStep.LANES
   private state: GameState | null = null
+  private practiceMode = false
 
   // Step 1: LANES tracking
   private lanesVisited = new Set<Lane>()
@@ -51,9 +52,10 @@ export class TutorialManager {
   private stickhandlePointsAccum = 0
   private stickhandlingDurationMs = 0
 
-  start(state: GameState): void {
+  start(state: GameState, options: { practiceMode?: boolean } = {}): void {
     this.state = state
     this.step = TutorialStep.LANES
+    this.practiceMode = options.practiceMode ?? false
     this.lanesVisited.clear()
     this.obstaclesDodged = 0
     this.coinsCollected = 0
@@ -75,7 +77,7 @@ export class TutorialManager {
   }
 
   getTotalSteps(_trackerConnected?: boolean): number {
-    return 4 // LANES, OBSTACLES, COINS, STICKHANDLING (always shown)
+    return this.practiceMode ? 3 : 4
   }
 
   getOverlayText(): string {
@@ -161,7 +163,6 @@ export class TutorialManager {
   // --- Internal ---
 
   private advanceFromCoins(): void {
-    // Always show stickhandling step — keyboard players can use S key to simulate
-    this.step = TutorialStep.STICKHANDLING
+    this.step = this.practiceMode ? TutorialStep.READY : TutorialStep.STICKHANDLING
   }
 }

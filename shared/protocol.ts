@@ -3,6 +3,13 @@ import trackerConfig from './tracker-config.json'
 // Shared protocol types for WebSocket messages between iPhone tracker and game display.
 // iPhone mirrors these types manually in Swift — this file is the single source of truth.
 
+export interface TrackingDebugTiming {
+  frameId: number
+  captureTs: number
+  detectDoneTs: number
+  sendTs: number
+}
+
 /** iPhone → Game: tracking input at 30Hz */
 export interface TrackingInput {
   type: 'input'
@@ -16,6 +23,7 @@ export interface TrackingInput {
     frequency: number
     amplitude: number
   }
+  debugTiming?: TrackingDebugTiming
 }
 
 /** Game → iPhone: state updates */
@@ -24,6 +32,19 @@ export interface GameStateMessage {
   state: GameScreenState
   score: number
   event?: GameEvent
+}
+
+/** Browser → iPhone: estimate browser/phone monotonic clock offset */
+export interface ClockSyncRequestMessage {
+  type: 'clock_sync_request'
+  t1: number
+}
+
+/** iPhone → Browser: immediate response with phone receive timestamp */
+export interface ClockSyncResponseMessage {
+  type: 'clock_sync_response'
+  t1: number
+  t2: number
 }
 
 export type Lane = 'left' | 'center' | 'right'
@@ -54,4 +75,8 @@ export const WS_ENDPOINTS = trackerConfig.webSocket
 
 export const MESSAGE_TYPES = trackerConfig.messageTypes
 
-export type ServerMessage = TrackingInput | GameStateMessage
+export type ServerMessage =
+  | TrackingInput
+  | GameStateMessage
+  | ClockSyncRequestMessage
+  | ClockSyncResponseMessage

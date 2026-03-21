@@ -5,6 +5,7 @@ import {
   resolveGameOverActionLane,
 } from './input-rules'
 import { KalmanAxis } from './kalman'
+import { LatencyProfiler } from './latency-profiler'
 import { JitterBuffer } from './jitter-buffer'
 import { KeyboardInput } from './keyboard-input'
 import { TrackerConnection } from './tracker-connection'
@@ -21,6 +22,7 @@ import { TrackerConnection } from './tracker-connection'
  */
 
 interface InputManagerOptions {
+  onLatencyExportRequested?: () => void
   onStartRequested?: (now: number) => void
   onReplayRequested?: (now: number) => void
   onMenuRequested?: () => void
@@ -32,6 +34,7 @@ export class InputManager {
   private inputCount = 0
   private inputRateTimer = 0
   private _inputRate = 0
+  private clockSyncTimer: number | null = null
 
   // Deke tracking
   private prevDeke = false
@@ -43,6 +46,7 @@ export class InputManager {
 
   // Jitter buffer (disabled by default)
   private readonly jitterBuffer: JitterBuffer<TrackingInput>
+  private readonly latencyProfiler = new LatencyProfiler()
 
   constructor(
     private readonly state: GameState,
@@ -50,11 +54,21 @@ export class InputManager {
   ) {
     this.jitterBuffer = new JitterBuffer(options.jitterBufferMs ?? 0)
     this.trackerConnection = new TrackerConnection({
-      onTrackingInput: (input) => this.receiveTrackingInput(input),
-      onTrackerConnected: () => { this.state.trackerConnected = true },
-      onTrackerDisconnected: () => { this.state.trackerConnected = false },
+      onTrackingInput: (input, recvTs) => this.receiveTrackingInput(input, recvTs),
+      onClockSyncResponse: (message, recvTs) => {
+        this.latencyProfiler.recordClockSyncResponse(message, recvTs)
+        this.state.latencyBreakdown = this.latencyProfiler.getStatusText()
+      },
+      onTrackerConnected: () => {
+        this.state.trackerConnected = true
+      },
+      onTrackerDisconnected: () => {
+        this.state.trackerConnected = false
+        this.state.latencyBreakdown = ''
+      },
     })
     this.keyboardInput = new KeyboardInput(this.state, {
+      onLatencyExportRequested: options.onLatencyExportRequested,
       onStartRequested: options.onStartRequested,
       onMenuRequested: options.onMenuRequested,
     })
@@ -69,10 +83,12 @@ export class InputManager {
 
   connect(): void {
     this.trackerConnection.connect()
+    this.startClockSync()
   }
 
   /** Route incoming input through jitter buffer or process immediately. */
-  private receiveTrackingInput(input: TrackingInput): void {
+  private receiveTrackingInput(input: TrackingInput, recvTs: number): void {
+    this.latencyProfiler.recordReceived(input, recvTs)
     if (this.jitterBuffer.enabled) {
       this.jitterBuffer.push(input, performance.now())
     } else {
@@ -97,7 +113,11 @@ export class InputManager {
     this.state.confidence = input.confidence
     this.state.rawX = input.raw.x
     this.state.rawY = input.raw.y
-    this.state.latency = Date.now() - input.ts
+    this.state.latency = this.latencyProfiler.hasClockSync()
+      ? this.state.latency
+      : (Date.now() - input.ts)
+    this.latencyProfiler.recordApplied(input, now)
+    this.state.latencyBreakdown = this.latencyProfiler.getStatusText()
 
     // Feed Kalman filter with measurement (confidence scales noise)
     this.updateKalman(input.raw.x, input.raw.y, input.confidence, now)
@@ -216,6 +236,21 @@ export class InputManager {
     this.keyboardInput.setup()
   }
 
+  recordRenderedFrame(now: number): void {
+    const snapshot = this.latencyProfiler.finalizeRenderedSamples(now)
+    if (!snapshot) return
+
+    this.state.latency = snapshot.average.totalMs
+    this.state.latencyBreakdown = snapshot.summaryText
+  }
+
+  exportLatencyCsv(): void {
+    const exported = this.latencyProfiler.downloadCsv()
+    this.state.latencyBreakdown = exported
+      ? `${this.latencyProfiler.getStatusText()} | EXPORTED CSV`
+      : 'LAT no samples to export yet'
+  }
+
   resetTrackingState(): void {
     this.kalmanX = null
     this.kalmanY = null
@@ -226,8 +261,25 @@ export class InputManager {
   }
 
   destroy(): void {
+    if (this.clockSyncTimer !== null) {
+      clearInterval(this.clockSyncTimer)
+      this.clockSyncTimer = null
+    }
     this.trackerConnection.destroy()
     this.keyboardInput.destroy()
     this.resetTrackingState()
+  }
+
+  private startClockSync(): void {
+    if (this.clockSyncTimer !== null) return
+
+    const sendSync = () => {
+      this.trackerConnection.send(
+        this.latencyProfiler.createClockSyncRequest(performance.now()),
+      )
+    }
+
+    sendSync()
+    this.clockSyncTimer = window.setInterval(sendSync, 2000)
   }
 }

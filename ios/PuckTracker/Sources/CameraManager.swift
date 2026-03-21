@@ -1,6 +1,16 @@
 import AVFoundation
 import UIKit
 
+func currentUptimeMs() -> Double {
+    ProcessInfo.processInfo.systemUptime * 1000
+}
+
+struct CapturedFrame {
+    let pixelBuffer: CVPixelBuffer
+    let frameId: Int64
+    let captureTs: Double
+}
+
 /// Manages AVFoundation camera capture at up to 60fps, delivering CVPixelBuffer frames via callback.
 final class CameraManager: NSObject, ObservableObject {
     let session = AVCaptureSession()
@@ -9,10 +19,11 @@ final class CameraManager: NSObject, ObservableObject {
     @Published var isRunning = false
 
     /// Called on each captured frame with the pixel buffer. Set by ContentView to wire into BallDetector.
-    var onFrame: ((CVPixelBuffer) -> Void)?
+    var onFrame: ((CapturedFrame) -> Void)?
 
     private let sessionQueue = DispatchQueue(label: "com.pucktracker.camera", qos: .userInitiated)
     private var isConfigured = false
+    private var nextFrameId: Int64 = 0
 
     // MARK: - Permission
 
@@ -147,7 +158,13 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         from connection: AVCaptureConnection
     ) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        onFrame?(pixelBuffer)
+        let capturedFrame = CapturedFrame(
+            pixelBuffer: pixelBuffer,
+            frameId: nextFrameId,
+            captureTs: currentUptimeMs()
+        )
+        nextFrameId += 1
+        onFrame?(capturedFrame)
     }
 
     func captureOutput(

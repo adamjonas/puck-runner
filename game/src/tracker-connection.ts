@@ -1,7 +1,14 @@
-import { MESSAGE_TYPES, WS_ENDPOINTS, type TrackingInput } from '@shared/protocol'
+import {
+  MESSAGE_TYPES,
+  WS_ENDPOINTS,
+  type ClockSyncRequestMessage,
+  type ClockSyncResponseMessage,
+  type TrackingInput,
+} from '@shared/protocol'
 
 interface TrackerConnectionHandlers {
-  onTrackingInput: (input: TrackingInput) => void
+  onTrackingInput: (input: TrackingInput, recvTs: number) => void
+  onClockSyncResponse: (message: ClockSyncResponseMessage, recvTs: number) => void
   onTrackerConnected: () => void
   onTrackerDisconnected: () => void
 }
@@ -35,9 +42,12 @@ export class TrackerConnection {
 
     this.ws.onmessage = (event) => {
       try {
+        const recvTs = performance.now()
         const msg = JSON.parse(event.data)
         if (msg.type === MESSAGE_TYPES.input) {
-          this.handlers.onTrackingInput(msg as TrackingInput)
+          this.handlers.onTrackingInput(msg as TrackingInput, recvTs)
+        } else if (msg.type === 'clock_sync_response') {
+          this.handlers.onClockSyncResponse(msg as ClockSyncResponseMessage, recvTs)
         } else if (msg.type === 'tracker_connected') {
           this.handlers.onTrackerConnected()
         } else if (msg.type === 'tracker_disconnected') {
@@ -70,6 +80,15 @@ export class TrackerConnection {
       this.ws.close()
       this.ws = null
     }
+  }
+
+  send(message: ClockSyncRequestMessage): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return false
+    }
+
+    this.ws.send(JSON.stringify(message))
+    return true
   }
 
   private scheduleReconnect(): void {

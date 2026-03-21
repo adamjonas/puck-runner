@@ -121,6 +121,7 @@ export class GameState {
   fps = 0
   inputRate = 0
   latency = 0
+  latencyBreakdown = ''
 
   // Per-run timers and flags
   run: RunState = createRunStateValue()
