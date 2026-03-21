@@ -17,6 +17,14 @@ import {
   announceNewHighScore,
   announceSpeedMilestone,
 } from './announcer'
+import {
+  resolveCoinCollectionEffects,
+  resolveHitEffects,
+  resolveSpeedAnnouncements,
+  resolveStickhandlingUpdate,
+  resolveSurvivalScore,
+  type ScoringAnnouncement,
+} from './scoring-rules'
 
 export class RunScoringSystem {
   private readonly comboDetector = new ComboDetector()
@@ -55,23 +63,25 @@ export class RunScoringSystem {
   }
 
   private handleHit(): void {
-    playSound('hit')
-    const reachedNewHighScore = this.state.score >= this.state.highScore && this.state.score > 0
+    const resolution = resolveHitEffects({
+      lives: this.state.lives,
+      score: this.state.score,
+      highScore: this.state.highScore,
+      playerName: this.state.playerName,
+    })
 
-    if (this.state.lives > 0) {
-      playSound('life_lost')
-      announceLifeLost(this.announcer)
-    } else {
-      playSound('game_over')
+    for (const sound of resolution.sounds) {
+      playSound(sound)
+    }
+    if (resolution.clearAnnouncer) {
       this.announcer.clear()
-      announceGameOver(this.announcer)
+    }
+    this.emitAnnouncements(resolution.announcements)
+    if (resolution.muteAudio) {
       muteAudio()
-      if (reachedNewHighScore) {
-        announceNewHighScore(this.announcer)
-      }
-      if (this.state.playerName) {
-        recordRunResult(this.state.playerName, { score: this.state.score })
-      }
+    }
+    if (resolution.persistRunScore !== null) {
+      recordRunResult(this.state.playerName, { score: resolution.persistRunScore })
     }
 
     this.state.breakStreak()
@@ -79,24 +89,23 @@ export class RunScoringSystem {
 
   private collectPlayingCoins(now: number, events: GameEvent[]): void {
     const collected = collectCoins(this.state)
-    if (collected <= 0) return
+    const resolution = resolveCoinCollectionEffects({
+      collected,
+      firstCoinAnnounced: this.state.run.firstCoinAnnounced,
+      multiplier: this.state.multiplier,
+      onFireAnnounced: this.state.run.onFireAnnounced,
+      lane: this.state.lane,
+      now,
+    })
+    if (resolution.sounds.length === 0) return
 
-    playSound('coin')
-    if (!this.state.run.firstCoinAnnounced) {
-      announceFirstCoin(this.announcer)
-      this.state.run.firstCoinAnnounced = true
+    for (const sound of resolution.sounds) {
+      playSound(sound)
     }
-
-    for (let i = 0; i < collected; i++) {
-      events.push({ type: 'coin_collected', time: now, lane: this.state.lane })
-    }
-
-    if (this.state.multiplier < 5) {
-      this.state.run.onFireAnnounced = false
-    } else if (!this.state.run.onFireAnnounced) {
-      this.state.run.onFireAnnounced = true
-      announceMultiplier5x(this.announcer)
-    }
+    events.push(...resolution.events)
+    this.state.run.firstCoinAnnounced = resolution.firstCoinAnnounced
+    this.state.run.onFireAnnounced = resolution.onFireAnnounced
+    this.emitAnnouncements(resolution.announcements)
   }
 
   private updateComboAnnouncements(events: GameEvent[]): void {
@@ -109,35 +118,39 @@ export class RunScoringSystem {
   }
 
   private updateStickhandlingScoring(now: number): void {
-    if (this.state.stickhandlingActive && this.state.screen === 'playing') {
-      if (now - this.state.run.lastStickhandlingTick >= 1000) {
-        const rate = this.state.stickhandlingFrequency >= 4.0 ? 10 : 5
-        this.state.addScore(rate)
-        this.state.run.lastStickhandlingTick = now
-      }
+    const resolution = resolveStickhandlingUpdate({
+      screen: this.state.screen,
+      stickhandlingActive: this.state.stickhandlingActive,
+      stickhandlingFrequency: this.state.stickhandlingFrequency,
+      lastStickhandlingTick: this.state.run.lastStickhandlingTick,
+      stickhandlingStreakStart: this.state.stickhandlingStreakStart,
+      silkyMittsAwarded: this.state.silkyMittsAwarded,
+      now,
+    })
 
-      if (
-        this.state.stickhandlingStreakStart > 0 &&
-        !this.state.silkyMittsAwarded &&
-        now - this.state.stickhandlingStreakStart >= GameState.SILKY_MITTS_THRESHOLD_MS
-      ) {
-        this.state.silkyMittsAwarded = true
-        this.state.addScore(50)
-        this.state.comboText = 'SILKY MITTS!'
-        this.state.comboTextUntil = now + 2000
-        playSound('silky_mitts')
-      }
-      return
+    if (resolution.scoreDelta > 0) {
+      this.state.addScore(resolution.scoreDelta)
     }
-
-    this.state.run.lastStickhandlingTick = now
+    this.state.run.lastStickhandlingTick = resolution.lastStickhandlingTick
+    this.state.silkyMittsAwarded = resolution.silkyMittsAwarded
+    if (resolution.comboText !== null && resolution.comboTextUntil !== null) {
+      this.state.comboText = resolution.comboText
+      this.state.comboTextUntil = resolution.comboTextUntil
+    }
+    if (resolution.sound) {
+      playSound(resolution.sound)
+    }
   }
 
   private updateSurvivalScore(now: number): void {
-    if (now - this.state.run.lastSurvivalTick >= 1000) {
-      this.state.score += 1
-      this.state.run.lastSurvivalTick = now
+    const resolution = resolveSurvivalScore({
+      lastSurvivalTick: this.state.run.lastSurvivalTick,
+      now,
+    })
+    if (resolution.scoreDelta > 0) {
+      this.state.score += resolution.scoreDelta
     }
+    this.state.run.lastSurvivalTick = resolution.lastSurvivalTick
   }
 
   private updateDekeState(now: number): void {
@@ -147,14 +160,45 @@ export class RunScoringSystem {
   }
 
   private updateSpeedAnnouncements(): void {
-    if (this.state.speed >= this.state.run.lastSpeedMilestone + 0.5) {
-      this.state.run.lastSpeedMilestone = Math.floor(this.state.speed * 2) / 2
-      announceSpeedMilestone(this.announcer)
-    }
+    const resolution = resolveSpeedAnnouncements({
+      speed: this.state.speed,
+      lastSpeedMilestone: this.state.run.lastSpeedMilestone,
+      isDekeUnlocked: this.state.isDekeUnlocked,
+      dekeUnlockAnnounced: this.state.run.dekeUnlockAnnounced,
+    })
+    this.state.run.lastSpeedMilestone = resolution.lastSpeedMilestone
+    this.state.run.dekeUnlockAnnounced = resolution.dekeUnlockAnnounced
+    this.emitAnnouncements(resolution.announcements)
+  }
 
-    if (this.state.isDekeUnlocked && !this.state.run.dekeUnlockAnnounced) {
-      this.state.run.dekeUnlockAnnounced = true
-      announceDekeUnlocked(this.announcer)
+  private emitAnnouncements(announcements: ScoringAnnouncement[]): void {
+    for (const announcement of announcements) {
+      switch (announcement) {
+        case 'deke_success':
+          announceDekeSuccess(this.announcer)
+          break
+        case 'first_coin':
+          announceFirstCoin(this.announcer)
+          break
+        case 'multiplier_5x':
+          announceMultiplier5x(this.announcer)
+          break
+        case 'life_lost':
+          announceLifeLost(this.announcer)
+          break
+        case 'game_over':
+          announceGameOver(this.announcer)
+          break
+        case 'new_high_score':
+          announceNewHighScore(this.announcer)
+          break
+        case 'speed_milestone':
+          announceSpeedMilestone(this.announcer)
+          break
+        case 'deke_unlocked':
+          announceDekeUnlocked(this.announcer)
+          break
+      }
     }
   }
 }

@@ -1,0 +1,3 @@
+export const TRACKING_CONFIDENCE_MIN = 0.15
+export const BALL_LOST_GRACE_MS = 1000
+export const PAUSE_RESUME_INPUT_WINDOW_MS = 200

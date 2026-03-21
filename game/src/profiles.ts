@@ -2,10 +2,13 @@
  * Builtin family profiles plus custom player profiles stored in localStorage.
  */
 
-const STORAGE_KEY = 'puck-runner-profiles'
-const SCORE_RESET_MIGRATION_KEY = 'puck-runner-score-reset-cora-colby-v1'
+import {
+  applyBuiltinScoreReset,
+  loadStoredProfiles,
+  saveStoredProfiles,
+} from './profile-store'
+
 const MAX_PROFILES = 20
-const BUILTIN_SCORE_RESET_NAMES = new Set(['cora', 'colby'])
 
 // ---------------------------------------------------------------------------
 // Types
@@ -55,7 +58,7 @@ const BUILTIN_NAME_SET = new Set(BUILTIN_PROFILES.map((profile) => profile.name.
 
 /** Load builtin profiles merged with saved progress, followed by custom profiles. */
 export function loadProfiles(): PlayerProfile[] {
-  const storedProfiles = applyBuiltinScoreReset(loadStoredProfiles())
+  const storedProfiles = applyBuiltinScoreReset(loadStoredProfiles({ isValidProfile }))
   const storedByName = new Map(
     storedProfiles.map((profile) => [profile.name.toLowerCase(), profile]),
   )
@@ -73,29 +76,7 @@ export function loadProfiles(): PlayerProfile[] {
 
 /** Persist profiles to localStorage. */
 export function saveProfiles(profiles: PlayerProfile[]): void {
-  try {
-    const normalizedProfiles = [
-      ...BUILTIN_PROFILES.map((profile) =>
-        mergeBuiltinProfile(
-          profile,
-          profiles.find((candidate) => candidate.name.toLowerCase() === profile.name.toLowerCase()),
-        ),
-      ),
-      ...dedupeProfiles(
-        profiles
-          .filter((profile) => !isBuiltinProfileName(profile.name))
-          .map(normalizeCustomProfile),
-      ),
-    ]
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedProfiles))
-  } catch (err: unknown) {
-    if (err instanceof DOMException && err.name === 'QuotaExceededError') {
-      console.warn('puck-runner: localStorage quota exceeded — profiles not saved')
-    } else {
-      console.warn('puck-runner: failed to save profiles', err)
-    }
-  }
+  saveStoredProfiles(buildPersistedProfiles(profiles))
 }
 
 export function addProfile(name: string): PlayerProfile | null {
@@ -252,83 +233,6 @@ function isBuiltinProfileName(name: string): boolean {
   return BUILTIN_NAME_SET.has(name.toLowerCase())
 }
 
-function loadStoredProfiles(): PlayerProfile[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
-      console.warn('puck-runner: corrupted profile data — resetting')
-      localStorage.removeItem(STORAGE_KEY)
-      return []
-    }
-
-    return parsed.filter(isValidProfile)
-  } catch {
-    console.warn('puck-runner: failed to load profiles — resetting')
-    try {
-      localStorage.removeItem(STORAGE_KEY)
-    } catch {
-      // Storage completely unavailable
-    }
-    return []
-  }
-}
-
-function applyBuiltinScoreReset(profiles: PlayerProfile[]): PlayerProfile[] {
-  if (hasAppliedScoreResetMigration()) {
-    return profiles
-  }
-
-  let changed = false
-  const nextProfiles = profiles.map((profile) => {
-    if (!BUILTIN_SCORE_RESET_NAMES.has(profile.name.toLowerCase())) {
-      return profile
-    }
-    if (profile.highScore === 0) {
-      return profile
-    }
-    changed = true
-    return {
-      ...profile,
-      highScore: 0,
-    }
-  })
-
-  markScoreResetMigrationApplied()
-
-  if (changed) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextProfiles))
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'QuotaExceededError') {
-        console.warn('puck-runner: localStorage quota exceeded — profile reset not saved')
-      } else {
-        console.warn('puck-runner: failed to persist builtin score reset', err)
-      }
-    }
-  }
-
-  return nextProfiles
-}
-
-function hasAppliedScoreResetMigration(): boolean {
-  try {
-    return localStorage.getItem(SCORE_RESET_MIGRATION_KEY) === '1'
-  } catch {
-    return true
-  }
-}
-
-function markScoreResetMigrationApplied(): void {
-  try {
-    localStorage.setItem(SCORE_RESET_MIGRATION_KEY, '1')
-  } catch {
-    // Storage unavailable; avoid blocking profile reads.
-  }
-}
-
 function mergeBuiltinProfile(
   builtin: PlayerProfile,
   saved?: PlayerProfile,
@@ -364,6 +268,22 @@ function dedupeProfiles(profiles: PlayerProfile[]): PlayerProfile[] {
   }
 
   return deduped
+}
+
+function buildPersistedProfiles(profiles: PlayerProfile[]): PlayerProfile[] {
+  return [
+    ...BUILTIN_PROFILES.map((profile) =>
+      mergeBuiltinProfile(
+        profile,
+        profiles.find((candidate) => candidate.name.toLowerCase() === profile.name.toLowerCase()),
+      ),
+    ),
+    ...dedupeProfiles(
+      profiles
+        .filter((profile) => !isBuiltinProfileName(profile.name))
+        .map(normalizeCustomProfile),
+    ),
+  ]
 }
 
 /** Runtime shape check for a single profile object. Backfills missing fields. */

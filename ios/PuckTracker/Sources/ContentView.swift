@@ -77,6 +77,7 @@ struct ContentView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(webSocketManager)
+                .environmentObject(ballDetector)
         }
         .sheet(isPresented: $showCalibration) {
             CalibrationView()
@@ -84,51 +85,20 @@ struct ContentView: View {
                 .environmentObject(positionClassifier)
         }
         .onAppear {
-            startPipeline()
+            TrackingPipeline.start(
+                cameraManager: cameraManager,
+                ballDetector: ballDetector,
+                positionClassifier: positionClassifier,
+                webSocketManager: webSocketManager
+            )
         }
         .onDisappear {
-            stopPipeline()
-        }
-    }
-
-    private func startPipeline() {
-        cameraManager.requestPermission()
-
-        // Wire up the pipeline: camera → detector → classifier → websocket
-        cameraManager.onFrame = { [weak ballDetector] pixelBuffer in
-            ballDetector?.processFrame(pixelBuffer)
-        }
-
-        ballDetector.onPositionUpdate = { [weak positionClassifier, weak webSocketManager] position, confidence in
-            guard let classifier = positionClassifier,
-                  let ws = webSocketManager else { return }
-
-            classifier.update(position: position, confidence: confidence)
-
-            let message = TrackingMessage(
-                type: SharedTrackerConfig.MessageTypes.input,
-                ts: Int64(Date().timeIntervalSince1970 * 1000),
-                raw: .init(x: position.x, y: position.y),
-                lane: classifier.currentLane.rawValue,
-                deke: classifier.isDekeActive,
-                confidence: confidence,
-                stickhandling: .init(
-                    active: classifier.stickhandlingActive,
-                    frequency: classifier.stickhandlingFrequency,
-                    amplitude: classifier.stickhandlingAmplitude
-                )
+            TrackingPipeline.stop(
+                cameraManager: cameraManager,
+                ballDetector: ballDetector,
+                webSocketManager: webSocketManager
             )
-            ws.send(message)
         }
-
-        // Connect WebSocket with stored host
-        let host = UserDefaults.standard.string(forKey: "serverHost") ?? "192.168.1.100"
-        webSocketManager.connect(host: host)
-    }
-
-    private func stopPipeline() {
-        cameraManager.stopSession()
-        webSocketManager.disconnect()
     }
 }
 

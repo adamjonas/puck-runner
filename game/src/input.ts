@@ -1,5 +1,9 @@
 import type { TrackingInput } from '@shared/protocol'
 import type { GameState } from './game-state'
+import {
+  resolveControllableTracking,
+  resolveGameOverActionLane,
+} from './input-rules'
 import { KalmanAxis } from './kalman'
 import { JitterBuffer } from './jitter-buffer'
 import { KeyboardInput } from './keyboard-input'
@@ -15,9 +19,6 @@ import { TrackerConnection } from './tracker-connection'
  * Pipeline: WS → JitterBuffer → Kalman update → state
  * Each frame: Kalman predict → state.rawX/rawY
  */
-
-/** Minimum confidence to accept any input (below = ball lost) */
-const CONFIDENCE_MIN = 0.15
 
 interface InputManagerOptions {
   onStartRequested?: (now: number) => void
@@ -108,28 +109,29 @@ export class InputManager {
       return
     }
 
-    const isControllableScreen = this.state.screen === 'playing' || this.state.screen === 'tutorial'
+    const trackingResolution = resolveControllableTracking({
+      screen: this.state.screen,
+      confidence: input.confidence,
+      inputDeke: input.deke,
+      prevDeke: this.prevDeke,
+      stickhandlingActive: input.stickhandling.active,
+      stickhandlingFrequency: input.stickhandling.frequency,
+      stickhandlingStreakStart: this.state.stickhandlingStreakStart,
+      silkyMittsAwarded: this.state.silkyMittsAwarded,
+      now,
+    })
 
-    if (input.confidence >= CONFIDENCE_MIN && isControllableScreen) {
+    if (trackingResolution.shouldApplyControls) {
       this.state.setLane(input.lane, now)
 
-      // Deke: trigger on rising edge (false → true)
-      if (this.state.screen === 'playing' && input.deke && !this.prevDeke) {
+      if (trackingResolution.shouldTriggerDeke) {
         this.state.activateDeke(now)
       }
 
-      // Stickhandling
-      this.state.stickhandlingActive = input.stickhandling.active
-      this.state.stickhandlingFrequency = input.stickhandling.frequency
-
-      if (input.stickhandling.active) {
-        if (this.state.stickhandlingStreakStart === 0) {
-          this.state.stickhandlingStreakStart = now
-        }
-      } else {
-        this.state.stickhandlingStreakStart = 0
-        this.state.silkyMittsAwarded = false
-      }
+      this.state.stickhandlingActive = trackingResolution.stickhandlingActive
+      this.state.stickhandlingFrequency = trackingResolution.stickhandlingFrequency
+      this.state.stickhandlingStreakStart = trackingResolution.stickhandlingStreakStart
+      this.state.silkyMittsAwarded = trackingResolution.silkyMittsAwarded
     }
 
     this.prevDeke = input.deke
@@ -138,7 +140,7 @@ export class InputManager {
 
   private handleGameOverInput(input: TrackingInput, now: number): void {
     const action = this.state.updateGameOverAction(
-      input.confidence >= CONFIDENCE_MIN ? input.lane : null,
+      resolveGameOverActionLane(input.lane, input.confidence),
       input.confidence,
     )
 

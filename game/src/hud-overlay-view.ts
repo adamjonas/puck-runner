@@ -1,14 +1,11 @@
 import { GameState } from './game-state'
 import type { Announcer } from './announcer'
 import type { PlayerProfile } from './profiles'
+import { createHudOverlayElements } from './hud-overlay-parts'
 import {
-  div,
-  FONT_MONO,
-  FONT_TEXT,
   formatProfileLabel,
   GOLD,
   GREEN,
-  scaled,
 } from './overlay-utils'
 
 interface HudOverlayViewOptions {
@@ -36,208 +33,21 @@ export class HudOverlayView {
   private comboFadeTimeout: ReturnType<typeof setTimeout> | null = null
 
   constructor(options: HudOverlayViewOptions) {
-    this.scoreEl = div({
-      position: 'absolute',
-      top: '16px',
-      right: '16px',
-      fontFamily: FONT_MONO,
-      fontSize: scaled(36),
-      fontWeight: '800',
-      color: '#fff',
-      textAlign: 'right',
-      textShadow: '0 2px 8px rgba(0,0,0,0.6)',
-    })
-    options.root.appendChild(this.scoreEl)
-
-    this.multiplierEl = div({
-      position: 'absolute',
-      top: '60px',
-      right: '16px',
-      fontFamily: FONT_MONO,
-      fontSize: scaled(18),
-      fontWeight: '700',
-      color: GOLD,
-      textAlign: 'right',
-      padding: '2px 10px',
-      borderRadius: '12px',
-      background: 'rgba(255, 215, 0, 0.15)',
-      opacity: '0',
-      transition: 'opacity 0.3s ease',
-    })
-    options.root.appendChild(this.multiplierEl)
-
-    this.livesEl = div({
-      position: 'absolute',
-      top: '16px',
-      left: '16px',
-      fontSize: scaled(28),
-      letterSpacing: '4px',
-      textShadow: '0 2px 8px rgba(0,0,0,0.6)',
-    })
-    options.root.appendChild(this.livesEl)
-
-    this.playerNameEl = div({
-      position: 'absolute',
-      top: '18px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      fontFamily: FONT_TEXT,
-      fontSize: scaled(14),
-      fontWeight: '600',
-      color: 'rgba(255,255,255,0.45)',
-      letterSpacing: '3px',
-      textTransform: 'uppercase',
-    })
-    options.root.appendChild(this.playerNameEl)
-
-    this.dekeEl = div({
-      position: 'absolute',
-      bottom: '24px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      fontFamily: FONT_TEXT,
-      fontSize: scaled(16),
-      fontWeight: '700',
-      color: '#fff',
-      padding: '6px 18px',
-      borderRadius: '20px',
-      background: 'rgba(0,0,0,0.5)',
-      backdropFilter: 'blur(4px)',
-      transition: 'opacity 0.3s ease, background 0.3s ease, color 0.3s ease',
-      opacity: '0',
-    })
-    options.root.appendChild(this.dekeEl)
-
-    this.comboEl = div({
-      position: 'absolute',
-      top: '40%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-      fontFamily: FONT_TEXT,
-      fontSize: scaled(48),
-      fontWeight: '900',
-      color: GOLD,
-      textAlign: 'center',
-      textShadow: '0 2px 16px rgba(255, 215, 0, 0.4)',
-      opacity: '0',
-      transition: 'opacity 0.4s ease',
-      whiteSpace: 'nowrap',
-    })
-    options.root.appendChild(this.comboEl)
-
-    this.announcerBarEl = div({
-      position: 'absolute',
-      bottom: '80px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      background: 'rgba(0, 0, 0, 0.65)',
-      backdropFilter: 'blur(8px)',
-      borderRadius: '8px',
-      padding: '10px 28px',
-      opacity: '0',
-      transition: 'opacity 0.3s ease',
-      maxWidth: '90vw',
-    })
-    this.announcerTextEl = document.createElement('span')
-    this.announcerTextEl.textContent = ''
-    Object.assign(this.announcerTextEl.style, {
-      fontFamily: FONT_TEXT,
-      fontSize: scaled(20),
-      fontWeight: '600',
-      color: '#fff',
-      whiteSpace: 'nowrap',
-    })
-    this.announcerBarEl.appendChild(this.announcerTextEl)
-    options.root.appendChild(this.announcerBarEl)
-
-    this.speedEl = div({
-      position: 'absolute',
-      bottom: '24px',
-      right: '16px',
-      fontFamily: FONT_MONO,
-      fontSize: scaled(14),
-      fontWeight: '600',
-      color: 'rgba(255,255,255,0.7)',
-      padding: '4px 10px',
-      borderRadius: '10px',
-      background: 'rgba(255,255,255,0.1)',
-    })
-    options.root.appendChild(this.speedEl)
-
-    this.stickhandlingEl = div({
-      position: 'absolute',
-      bottom: '24px',
-      left: '16px',
-      fontFamily: FONT_MONO,
-      fontSize: scaled(14),
-      fontWeight: '600',
-      color: 'rgba(255,255,255,0.7)',
-      padding: '4px 10px',
-      borderRadius: '10px',
-      background: 'rgba(255,255,255,0.1)',
-      opacity: '0',
-      transition: 'opacity 0.3s ease',
-    })
-    options.root.appendChild(this.stickhandlingEl)
-
-    this.tutorialInstructionEl = div({
-      position: 'absolute',
-      top: '20%',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      fontFamily: FONT_TEXT,
-      fontSize: scaled(32),
-      fontWeight: '800',
-      color: '#fff',
-      textAlign: 'center',
-      textShadow: '0 2px 16px rgba(0,0,0,0.7)',
-      padding: '16px 32px',
-      borderRadius: '16px',
-      background: 'rgba(0, 0, 0, 0.55)',
-      backdropFilter: 'blur(8px)',
-      opacity: '0',
-      transition: 'opacity 0.4s ease',
-      whiteSpace: 'nowrap',
-      pointerEvents: 'none',
-    })
-    options.root.appendChild(this.tutorialInstructionEl)
-
-    this.countdownOverlay = div({
-      position: 'fixed',
-      top: '0',
-      left: '0',
-      width: '100%',
-      height: '100%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: '200',
-      opacity: '0',
-      transition: 'opacity 0.2s ease',
-      pointerEvents: 'none',
-      flexDirection: 'column',
-      gap: '16px',
-    })
-
-    this.countdownReadyEl = div({
-      fontFamily: FONT_TEXT,
-      fontSize: scaled(42),
-      fontWeight: '800',
-      color: GOLD,
-      textShadow: '0 0 30px rgba(255, 215, 0, 0.4)',
-      textAlign: 'center',
-    })
-    this.countdownOverlay.appendChild(this.countdownReadyEl)
-
-    this.countdownNumberEl = div({
-      fontFamily: FONT_MONO,
-      fontSize: scaled(120),
-      fontWeight: '900',
-      color: '#fff',
-      textShadow: '0 0 40px rgba(255,255,255,0.3)',
-    })
-    this.countdownOverlay.appendChild(this.countdownNumberEl)
-    options.root.appendChild(this.countdownOverlay)
+    const elements = createHudOverlayElements(options.root)
+    this.scoreEl = elements.scoreEl
+    this.multiplierEl = elements.multiplierEl
+    this.livesEl = elements.livesEl
+    this.dekeEl = elements.dekeEl
+    this.comboEl = elements.comboEl
+    this.announcerBarEl = elements.announcerBarEl
+    this.announcerTextEl = elements.announcerTextEl
+    this.speedEl = elements.speedEl
+    this.stickhandlingEl = elements.stickhandlingEl
+    this.playerNameEl = elements.playerNameEl
+    this.tutorialInstructionEl = elements.tutorialInstructionEl
+    this.countdownOverlay = elements.countdownOverlay
+    this.countdownReadyEl = elements.countdownReadyEl
+    this.countdownNumberEl = elements.countdownNumberEl
   }
 
   update(state: GameState, announcer: Announcer, activeProfile: PlayerProfile | null): void {

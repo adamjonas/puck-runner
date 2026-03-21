@@ -1,10 +1,15 @@
-import type { Lane } from '@shared/protocol'
 import { playSound } from './audio'
 import { collectCoins, updateCoins } from './coins'
 import { GameState } from './game-state'
 import { markTutorialComplete } from './profiles'
 import { checkCollisions, updateObstacles } from './obstacles'
 import { TutorialManager, TutorialStep } from './tutorial'
+import {
+  getTutorialCoinY,
+  getTutorialStepSpeed,
+  selectTutorialCoinLane,
+  selectTutorialObstacleLane,
+} from './tutorial-rules'
 import {
   Announcer,
   announceTutorialCoins,
@@ -13,12 +18,6 @@ import {
   announceTutorialStickhandling,
 } from './announcer'
 import { activateCoin, activateObstacle } from './world-entities'
-
-const TUTORIAL_LANES: Lane[] = ['left', 'center', 'right']
-const TUTORIAL_BASE_SPEED = 0.6
-const TUTORIAL_OBSTACLE_SPEED = 1.0
-const PRACTICE_COIN_START_Y = 0.54
-const PRACTICE_COIN_SPACING = 0.08
 
 export class TutorialSession {
   private readonly tutorial = new TutorialManager()
@@ -33,7 +32,7 @@ export class TutorialSession {
 
   start(isPractice: boolean, now: number): void {
     this.practiceMode = isPractice
-    this.state.enterTutorial(now, this.getStepSpeed(TutorialStep.LANES))
+    this.state.enterTutorial(now, getTutorialStepSpeed(TutorialStep.LANES))
     this.tutorial.start(this.state)
     this.lastStep = TutorialStep.LANES
     this.obstacleCount = 0
@@ -48,7 +47,7 @@ export class TutorialSession {
   }
 
   update(now: number, dt: number, viewportHeight: number): void {
-    this.state.speed = this.getStepSpeed(this.tutorial.getStep())
+    this.state.speed = getTutorialStepSpeed(this.tutorial.getStep())
     this.state.elapsed = now - this.state.startTime
     this.state.updatePosition(dt)
 
@@ -96,21 +95,6 @@ export class TutorialSession {
     }
   }
 
-  private getStepSpeed(step: TutorialStep): number {
-    return step === TutorialStep.OBSTACLES ? TUTORIAL_OBSTACLE_SPEED : TUTORIAL_BASE_SPEED
-  }
-
-  private laneHasObstacleConflict(lane: Lane): boolean {
-    for (const obstacle of this.state.obstacles) {
-      if (!obstacle.active) continue
-      if (obstacle.y > 0.95) continue
-      if (obstacle.lane === lane || obstacle.secondLane === lane) {
-        return true
-      }
-    }
-    return false
-  }
-
   private spawnObjects(): void {
     const step = this.tutorial.getStep()
 
@@ -121,17 +105,12 @@ export class TutorialSession {
       const obstacle = this.state.obstacles.find((candidate) => !candidate.active)
       if (!obstacle) return
 
-      let lane: Lane = 'center'
-      if (!this.practiceMode) {
-        this.obstacleCount++
-        const playerLane = this.state.lane
-        if (this.obstacleCount % 2 === 1) {
-          const safeLanes = TUTORIAL_LANES.filter((candidate) => candidate !== playerLane)
-          lane = safeLanes[Math.floor(Math.random() * safeLanes.length)]
-        } else {
-          lane = playerLane
-        }
-      }
+      this.obstacleCount++
+      const lane = selectTutorialObstacleLane({
+        practiceMode: this.practiceMode,
+        obstacleCount: this.obstacleCount,
+        playerLane: this.state.lane,
+      })
 
       activateObstacle(obstacle, {
         lane,
@@ -148,13 +127,11 @@ export class TutorialSession {
     const hasActive = this.state.coins.some((coin) => coin.active)
     if (hasActive) return
 
-    const safeLanes = TUTORIAL_LANES.filter((lane) => !this.laneHasObstacleConflict(lane))
-    if (safeLanes.length === 0) return
-
-    const moveLanes = safeLanes.filter((lane) => lane !== this.state.lane)
-    const lane = moveLanes.length > 0
-      ? moveLanes[Math.floor(Math.random() * moveLanes.length)]
-      : safeLanes[Math.floor(Math.random() * safeLanes.length)]
+    const lane = selectTutorialCoinLane({
+      obstacles: this.state.obstacles,
+      playerLane: this.state.lane,
+    })
+    if (!lane) return
 
     const available = this.state.coins.filter((coin) => !coin.active).slice(0, 3)
     if (available.length < 3) return
@@ -163,9 +140,7 @@ export class TutorialSession {
       activateCoin(
         available[i],
         lane,
-        this.practiceMode
-          ? PRACTICE_COIN_START_Y - i * PRACTICE_COIN_SPACING
-          : -(i * 0.08),
+        getTutorialCoinY(i, this.practiceMode),
       )
     }
   }
