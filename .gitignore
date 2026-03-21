@@ -7,6 +7,8 @@ xcuserdata/
 DerivedData/
 build/
 .build/
+.module-cache/
+.swift-module-cache/
 *.swp
 *.swo
 .gstack/
