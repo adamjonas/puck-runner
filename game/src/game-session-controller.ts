@@ -130,6 +130,8 @@ export class GameSessionController {
 
   private update(now: number, dt: number): void {
     this.state.syncTime(now)
+    this.input.processBufferedInput(now)
+    this.input.updateInterpolatedPosition(now)
     const viewportHeight = this.canvas.clientHeight || window.innerHeight || 1
 
     if (this.state.screen === 'tutorial') {
@@ -215,5 +217,6 @@ export class GameSessionController {
   private resetSessionSystems(): void {
     this.scoring.resetSession()
     this.tutorial.reset()
+    this.input.resetTrackingState()
   }
 }

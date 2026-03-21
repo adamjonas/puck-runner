@@ -1,5 +1,9 @@
-import { MESSAGE_TYPES, WS_ENDPOINTS, type TrackingInput, type Lane } from '@shared/protocol'
+import type { TrackingInput } from '@shared/protocol'
 import type { GameState } from './game-state'
+import { KalmanAxis } from './kalman'
+import { JitterBuffer } from './jitter-buffer'
+import { KeyboardInput } from './keyboard-input'
+import { TrackerConnection } from './tracker-connection'
 
 /**
  * Input manager: handles WebSocket input from iPhone tracker + keyboard fallback.
@@ -7,152 +11,85 @@ import type { GameState } from './game-state'
  * Input flow:
  *   iPhone ──WS──▶ Vite relay ──WS──▶ InputManager ──▶ GameState
  *   Keyboard ──────────────────────────▶ InputManager ──▶ GameState
+ *
+ * Pipeline: WS → JitterBuffer → Kalman update → state
+ * Each frame: Kalman predict → state.rawX/rawY
  */
 
-interface InputSample {
-  x: number
-  y: number
-  lane: Lane
-  deke: boolean
-  confidence: number
-  ts: number
-  serverTs: number
-}
+/** Minimum confidence to accept any input (below = ball lost) */
+const CONFIDENCE_MIN = 0.15
 
 interface InputManagerOptions {
   onStartRequested?: (now: number) => void
   onReplayRequested?: (now: number) => void
   onMenuRequested?: () => void
-}
-
-type InteractiveEventTarget = EventTarget & {
-  tagName?: string
-  isContentEditable?: boolean
-  parentElement?: InteractiveEventTarget | null
-}
-
-export function isInteractiveEventTarget(target: EventTarget | null): boolean {
-  let current = target as InteractiveEventTarget | null
-
-  while (current && typeof current === 'object') {
-    if (current.isContentEditable) return true
-
-    const tagName = typeof current.tagName === 'string'
-      ? current.tagName.toUpperCase()
-      : ''
-
-    if (
-      tagName === 'BUTTON'
-      || tagName === 'INPUT'
-      || tagName === 'SELECT'
-      || tagName === 'TEXTAREA'
-      || tagName === 'A'
-    ) {
-      return true
-    }
-
-    current = current.parentElement ?? null
-  }
-
-  return false
-}
-
-export function shouldSuppressGlobalKeydown(target: EventTarget | null, key: string): boolean {
-  if (!isInteractiveEventTarget(target)) return false
-  return key === ' ' || key === 'Enter'
+  /** Jitter buffer delay in ms. 0 = disabled (default). */
+  jitterBufferMs?: number
 }
 
 export class InputManager {
-  private ws: WebSocket | null = null
-  private reconnectTimer: number | null = null
-  private reconnectDelay = 1000
-  private readonly maxReconnectDelay = 10000
-
-  private prev: InputSample | null = null
-  private curr: InputSample | null = null
-
   private inputCount = 0
   private inputRateTimer = 0
   private _inputRate = 0
 
-  private keyboardLane: Lane = 'center'
-  private keydownHandler: ((e: KeyboardEvent) => void) | null = null
-
   // Deke tracking
   private prevDeke = false
 
+  // Kalman filters for position prediction (one per axis)
+  private kalmanX: KalmanAxis | null = null
+  private kalmanY: KalmanAxis | null = null
+  private lastKalmanTime = 0
+
+  // Jitter buffer (disabled by default)
+  private readonly jitterBuffer: JitterBuffer<TrackingInput>
+
   constructor(
-    private state: GameState,
-    private options: InputManagerOptions = {},
-  ) {}
+    private readonly state: GameState,
+    private readonly options: InputManagerOptions = {},
+  ) {
+    this.jitterBuffer = new JitterBuffer(options.jitterBufferMs ?? 0)
+    this.trackerConnection = new TrackerConnection({
+      onTrackingInput: (input) => this.receiveTrackingInput(input),
+      onTrackerConnected: () => { this.state.trackerConnected = true },
+      onTrackerDisconnected: () => { this.state.trackerConnected = false },
+    })
+    this.keyboardInput = new KeyboardInput(this.state, {
+      onStartRequested: options.onStartRequested,
+      onMenuRequested: options.onMenuRequested,
+    })
+  }
+
+  private readonly trackerConnection: TrackerConnection
+  private readonly keyboardInput: KeyboardInput
 
   get inputRate(): number {
     return this._inputRate
   }
 
   connect(): void {
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${location.host}${WS_ENDPOINTS.gamePath}`
-
-    try {
-      this.ws = new WebSocket(url)
-    } catch {
-      this.scheduleReconnect()
-      return
-    }
-
-    this.ws.onopen = () => {
-      console.log('[input] Connected to relay')
-      this.reconnectDelay = 1000
-    }
-
-    this.ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data)
-        if (msg.type === MESSAGE_TYPES.input) {
-          this.handleTrackingInput(msg as TrackingInput)
-        } else if (msg.type === 'tracker_connected') {
-          this.state.trackerConnected = true
-        } else if (msg.type === 'tracker_disconnected') {
-          this.state.trackerConnected = false
-        }
-      } catch {
-        // Drop malformed messages
-      }
-    }
-
-    this.ws.onclose = () => {
-      console.log('[input] Disconnected from relay')
-      this.ws = null
-      this.scheduleReconnect()
-    }
-
-    this.ws.onerror = () => {}
+    this.trackerConnection.connect()
   }
 
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer !== null) return
-    this.reconnectTimer = window.setTimeout(() => {
-      this.reconnectTimer = null
-      this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay)
-      this.connect()
-    }, this.reconnectDelay)
+  /** Route incoming input through jitter buffer or process immediately. */
+  private receiveTrackingInput(input: TrackingInput): void {
+    if (this.jitterBuffer.enabled) {
+      this.jitterBuffer.push(input, performance.now())
+    } else {
+      this.handleTrackingInput(input)
+    }
+  }
+
+  /** Consume any buffered samples. Call from game loop before updateInterpolatedPosition. */
+  processBufferedInput(now: number): void {
+    if (!this.jitterBuffer.enabled) return
+    for (const input of this.jitterBuffer.consume(now)) {
+      this.handleTrackingInput(input)
+    }
   }
 
   private handleTrackingInput(input: TrackingInput): void {
     const now = performance.now()
     this.state.syncTime(now)
-
-    this.prev = this.curr
-    this.curr = {
-      x: input.raw.x,
-      y: input.raw.y,
-      lane: input.lane,
-      deke: input.deke,
-      confidence: input.confidence,
-      ts: now,
-      serverTs: input.ts,
-    }
 
     this.state.trackerConnected = true
     this.state.lastInputTime = now
@@ -161,26 +98,11 @@ export class InputManager {
     this.state.rawY = input.raw.y
     this.state.latency = Date.now() - input.ts
 
+    // Feed Kalman filter with measurement (confidence scales noise)
+    this.updateKalman(input.raw.x, input.raw.y, input.confidence, now)
+
     if (this.state.screen === 'game_over') {
-      const action = this.state.updateGameOverAction(
-        input.confidence >= 0.5 ? input.lane : null,
-        input.confidence,
-      )
-      if (action === 'replay') {
-        this.keyboardLane = 'center'
-        if (this.options.onReplayRequested) {
-          this.options.onReplayRequested(now)
-        } else {
-          this.state.start(now)
-        }
-      } else if (action === 'menu') {
-        this.keyboardLane = 'center'
-        if (this.options.onMenuRequested) {
-          this.options.onMenuRequested()
-        } else {
-          this.state.reset()
-        }
-      }
+      this.handleGameOverInput(input, now)
       this.prevDeke = input.deke
       this.inputCount++
       return
@@ -188,7 +110,7 @@ export class InputManager {
 
     const isControllableScreen = this.state.screen === 'playing' || this.state.screen === 'tutorial'
 
-    if (input.confidence >= 0.5 && isControllableScreen) {
+    if (input.confidence >= CONFIDENCE_MIN && isControllableScreen) {
       this.state.setLane(input.lane, now)
 
       // Deke: trigger on rising edge (false → true)
@@ -214,19 +136,69 @@ export class InputManager {
     this.inputCount++
   }
 
+  private handleGameOverInput(input: TrackingInput, now: number): void {
+    const action = this.state.updateGameOverAction(
+      input.confidence >= CONFIDENCE_MIN ? input.lane : null,
+      input.confidence,
+    )
+
+    if (action === 'replay') {
+      this.keyboardInput.reset()
+      if (this.options.onReplayRequested) {
+        this.options.onReplayRequested(now)
+      } else {
+        this.state.start(now)
+      }
+      return
+    }
+
+    if (action === 'menu') {
+      this.keyboardInput.reset()
+      if (this.options.onMenuRequested) {
+        this.options.onMenuRequested()
+      } else {
+        this.state.reset()
+      }
+    }
+  }
+
+  /** Initialize or update Kalman filters with a new measurement. */
+  private updateKalman(x: number, y: number, confidence: number, now: number): void {
+    if (!this.kalmanX || !this.kalmanY) {
+      this.kalmanX = new KalmanAxis(x)
+      this.kalmanY = new KalmanAxis(y)
+      this.lastKalmanTime = now
+      return
+    }
+
+    // Predict to current time
+    const dt = (now - this.lastKalmanTime) / 1000 // convert ms to seconds
+    if (dt > 0) {
+      this.kalmanX.predict(dt)
+      this.kalmanY.predict(dt)
+    }
+    this.lastKalmanTime = now
+
+    // Update with measurement (confidence scales noise)
+    this.kalmanX.update(x, confidence)
+    this.kalmanY.update(y, confidence)
+  }
+
   getInterpolatedPosition(now: number): { x: number; y: number } | null {
-    if (!this.curr) return null
-    if (!this.prev) return { x: this.curr.x, y: this.curr.y }
+    if (!this.kalmanX || !this.kalmanY) return null
 
-    const inputInterval = this.curr.ts - this.prev.ts
-    if (inputInterval <= 0) return { x: this.curr.x, y: this.curr.y }
-
-    const elapsed = now - this.curr.ts
-    const t = Math.min(1, elapsed / inputInterval)
-
+    const dt = (now - this.lastKalmanTime) / 1000
     return {
-      x: this.curr.x + (this.curr.x - this.prev.x) * t,
-      y: this.curr.y + (this.curr.y - this.prev.y) * t,
+      x: this.kalmanX.position + this.kalmanX.velocity * dt,
+      y: this.kalmanY.position + this.kalmanY.velocity * dt,
+    }
+  }
+
+  updateInterpolatedPosition(now: number): void {
+    const pos = this.getInterpolatedPosition(now)
+    if (pos) {
+      this.state.rawX = pos.x
+      this.state.rawY = pos.y
     }
   }
 
@@ -239,87 +211,21 @@ export class InputManager {
   }
 
   setupKeyboard(): void {
-    this.keydownHandler = (e) => {
-      if (shouldSuppressGlobalKeydown(e.target, e.key)) return
+    this.keyboardInput.setup()
+  }
 
-      if (this.state.screen === 'game_over') {
-        if (e.key === 'Escape' || e.key.toLowerCase() === 'm') {
-          e.preventDefault()
-          if (this.options.onMenuRequested) {
-            this.options.onMenuRequested()
-          } else {
-            this.state.reset()
-          }
-          this.keyboardLane = 'center'
-          return
-        }
-      }
-
-      // Start game from title or game over (but not if tutorial just started)
-      if (this.state.screen === 'title' || this.state.screen === 'game_over') {
-        if (e.key === ' ' || e.key === 'Enter') {
-          e.preventDefault()
-          if (!this.state.tutorialActive) {
-            const now = performance.now()
-            if (this.options.onStartRequested) {
-              this.options.onStartRequested(now)
-            } else {
-              this.state.start(now)
-            }
-            this.keyboardLane = 'center'
-          }
-          return
-        }
-      }
-
-      if (this.state.screen !== 'playing' && this.state.screen !== 'tutorial') return
-
-      switch (e.key) {
-        case 'ArrowLeft':
-          e.preventDefault()
-          if (this.keyboardLane === 'right') this.keyboardLane = 'center'
-          else if (this.keyboardLane === 'center') this.keyboardLane = 'left'
-          this.state.setLane(this.keyboardLane, performance.now())
-          break
-        case 'ArrowRight':
-          e.preventDefault()
-          if (this.keyboardLane === 'left') this.keyboardLane = 'center'
-          else if (this.keyboardLane === 'center') this.keyboardLane = 'right'
-          this.state.setLane(this.keyboardLane, performance.now())
-          break
-        case 'ArrowDown':
-          e.preventDefault()
-          this.state.activateDeke(performance.now())
-          break
-        case 's':
-        case 'S':
-          // Simulate stickhandling toggle (for testing without tracker)
-          e.preventDefault()
-          this.state.stickhandlingActive = !this.state.stickhandlingActive
-          if (this.state.stickhandlingActive) {
-            this.state.stickhandlingFrequency = 3.0
-            if (this.state.stickhandlingStreakStart === 0) {
-              this.state.stickhandlingStreakStart = performance.now()
-            }
-          } else {
-            this.state.stickhandlingFrequency = 0
-            this.state.stickhandlingStreakStart = 0
-            this.state.silkyMittsAwarded = false
-          }
-          break
-      }
-    }
-    window.addEventListener('keydown', this.keydownHandler)
+  resetTrackingState(): void {
+    this.kalmanX = null
+    this.kalmanY = null
+    this.lastKalmanTime = 0
+    this.prevDeke = false
+    this.jitterBuffer.reset()
+    this.keyboardInput.reset()
   }
 
   destroy(): void {
-    if (this.reconnectTimer !== null) {
-      clearTimeout(this.reconnectTimer)
-    }
-    if (this.keydownHandler) {
-      window.removeEventListener('keydown', this.keydownHandler)
-      this.keydownHandler = null
-    }
-    this.ws?.close()
+    this.trackerConnection.destroy()
+    this.keyboardInput.destroy()
+    this.resetTrackingState()
   }
 }

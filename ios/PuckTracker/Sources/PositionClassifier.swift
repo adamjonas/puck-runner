@@ -17,11 +17,12 @@ final class PositionClassifier: ObservableObject {
         static let dekeEnter = SharedTrackerConfig.DekeThresholds.enter
         static let dekeExit = SharedTrackerConfig.DekeThresholds.exit
 
-        // Stickhandling detection
+        // Stickhandling detection (peak/trough based)
         static let minOscillationFrequency: Double = 1.5   // Hz — below this is just movement
         static let maxOscillationFrequency: Double = 8.0    // Hz — above this is noise
-        static let oscillationWindowSize: Int = 30          // frames (~1 second at 30fps)
-        static let minAmplitude: CGFloat = 0.03             // minimum X displacement to count
+        static let peakHistorySize: Int = 12                // max recent peaks/troughs to keep
+        static let minAmplitude: CGFloat = 0.03             // minimum peak-to-trough displacement
+        static let peakDeadBand: CGFloat = 0.002            // stays below the minimum valid 60fps motion step
     }
 
     // MARK: - Published State
@@ -37,9 +38,17 @@ final class PositionClassifier: ObservableObject {
     /// Previous lane — used for dead zone hysteresis (stay in previous lane while in dead zone)
     private var previousLane: Lane = .center
 
-    /// Stickhandling detection: ring buffer of recent X positions
-    private var xHistory: [CGFloat] = []
-    private var xTimestamps: [TimeInterval] = []
+    /// Stickhandling detection: peak/trough tracker
+    private struct Extremum {
+        let value: CGFloat
+        let time: TimeInterval
+        let isPeak: Bool
+    }
+    private var extrema: [Extremum] = []
+    private var lastDirection: Int = 0  // +1 rising, -1 falling
+    private var lastX: CGFloat = 0.5
+    private var runningExtremum: CGFloat = 0.5
+    private var hasFirstSample = false
 
     // MARK: - Calibration Overrides
 
@@ -126,76 +135,115 @@ final class PositionClassifier: ObservableObject {
         }
     }
 
-    // MARK: - Stickhandling Detection (Oscillation Frequency)
+    // MARK: - Stickhandling Detection (Peak/Trough Tracking)
+    //
+    // Tracks actual peaks and troughs in X movement rather than counting zero-crossings.
+    // Benefits:
+    //   - Responds faster (~2 cycles vs ~1 second window)
+    //   - Handles non-sinusoidal motion patterns
+    //   - Amplitude computed from actual peak-to-trough distances
+    //   - Frequency from peak-to-peak timing (more accurate)
 
     private func detectStickhandling(x: CGFloat) {
         let now = ProcessInfo.processInfo.systemUptime
 
-        // Append to ring buffer
-        xHistory.append(x)
-        xTimestamps.append(now)
-
-        // Trim to window size
-        while xHistory.count > Constants.oscillationWindowSize {
-            xHistory.removeFirst()
-            xTimestamps.removeFirst()
+        if !hasFirstSample {
+            lastX = x
+            runningExtremum = x
+            hasFirstSample = true
+            return
         }
 
-        // Need at least half the window to make a determination
-        guard xHistory.count >= Constants.oscillationWindowSize / 2 else {
+        let diff = x - lastX
+        let deadBand = Constants.peakDeadBand
+
+        // Determine movement direction (with dead band to reject noise)
+        let direction: Int
+        if diff > deadBand {
+            direction = 1
+        } else if diff < -deadBand {
+            direction = -1
+        } else {
+            direction = lastDirection
+        }
+
+        // Track the running extremum in current direction
+        if direction == 1 {
+            runningExtremum = max(runningExtremum, x)
+        } else if direction == -1 {
+            runningExtremum = min(runningExtremum, x)
+        }
+
+        // Detect direction reversal → record the extremum
+        if direction != 0 && lastDirection != 0 && direction != lastDirection {
+            let isPeak = lastDirection == 1  // was going up, now going down → peak
+            extrema.append(Extremum(value: runningExtremum, time: now, isPeak: isPeak))
+
+            // Trim old extrema
+            while extrema.count > Constants.peakHistorySize {
+                extrema.removeFirst()
+            }
+
+            // Reset running extremum for new direction
+            runningExtremum = x
+        }
+
+        if direction != 0 {
+            lastDirection = direction
+        }
+        lastX = x
+
+        // Prune extrema older than 1.5 seconds (stale data)
+        extrema.removeAll { now - $0.time > 1.5 }
+
+        // Need at least 3 extrema (peak-trough-peak or trough-peak-trough) for one full cycle
+        guard extrema.count >= 3 else {
             stickhandlingActive = false
             stickhandlingFrequency = 0.0
             stickhandlingAmplitude = 0.0
             return
         }
 
-        // Count zero-crossings (direction changes) in X movement
-        // A direction change indicates one half-cycle of oscillation
-        var directionChanges = 0
-        var maxX: CGFloat = xHistory[0]
-        var minX: CGFloat = xHistory[0]
-        var lastDirection: Int = 0  // +1 = increasing, -1 = decreasing
+        // Compute frequency from consecutive same-type extrema (peak-to-peak or trough-to-trough)
+        var periodSum: TimeInterval = 0
+        var periodCount = 0
+        var amplitudeSum: CGFloat = 0
+        var amplitudeCount = 0
 
-        for i in 1..<xHistory.count {
-            let diff = xHistory[i] - xHistory[i - 1]
-            let direction: Int
-            if diff > 0.005 {
-                direction = 1
-            } else if diff < -0.005 {
-                direction = -1
-            } else {
-                direction = lastDirection  // noise dead band
+        for i in 1..<extrema.count {
+            // Period: time between consecutive same-type extrema
+            if i >= 2 && extrema[i].isPeak == extrema[i - 2].isPeak {
+                let period = extrema[i].time - extrema[i - 2].time
+                if period > 0.05 { // reject impossibly fast
+                    periodSum += period
+                    periodCount += 1
+                }
             }
 
-            if direction != 0 && direction != lastDirection && lastDirection != 0 {
-                directionChanges += 1
+            // Amplitude: distance between adjacent peak and trough
+            if extrema[i].isPeak != extrema[i - 1].isPeak {
+                amplitudeSum += abs(extrema[i].value - extrema[i - 1].value)
+                amplitudeCount += 1
             }
-            if direction != 0 {
-                lastDirection = direction
-            }
-
-            maxX = max(maxX, xHistory[i])
-            minX = min(minX, xHistory[i])
         }
 
-        let amplitude = maxX - minX
-        let timeSpan = xTimestamps.last! - xTimestamps.first!
-
-        guard timeSpan > 0.1 else {
+        guard periodCount > 0 && amplitudeCount > 0 else {
             stickhandlingActive = false
+            stickhandlingFrequency = 0.0
+            stickhandlingAmplitude = 0.0
             return
         }
 
-        // Each pair of direction changes = one full oscillation cycle
-        let fullCycles = Double(directionChanges) / 2.0
-        let frequency = fullCycles / timeSpan
+        let avgPeriod = periodSum / Double(periodCount)
+        let frequency = 1.0 / avgPeriod
+        let avgAmplitude = amplitudeSum / CGFloat(amplitudeCount)
 
         stickhandlingFrequency = frequency
-        stickhandlingAmplitude = Double(amplitude)
+        stickhandlingAmplitude = Double(avgAmplitude)
 
         stickhandlingActive = frequency >= Constants.minOscillationFrequency
             && frequency <= Constants.maxOscillationFrequency
-            && amplitude >= Constants.minAmplitude
+            && avgAmplitude >= Constants.minAmplitude
     }
 
     // MARK: - Reset
@@ -207,8 +255,11 @@ final class PositionClassifier: ObservableObject {
         stickhandlingActive = false
         stickhandlingFrequency = 0.0
         stickhandlingAmplitude = 0.0
-        xHistory.removeAll()
-        xTimestamps.removeAll()
+        extrema.removeAll()
+        lastDirection = 0
+        lastX = 0.5
+        runningExtremum = 0.5
+        hasFirstSample = false
     }
 }
 

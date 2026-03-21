@@ -35,8 +35,7 @@ describe('ISSUE-005: keyboard listener cleanup', () => {
     const keydownCalls = addSpy.mock.calls.filter(
       ([event]) => event === 'keydown',
     )
-    // Each call adds one listener, but destroy should be able to clean up
-    expect(keydownCalls.length).toBe(2)
+    expect(keydownCalls.length).toBe(1)
 
     addSpy.mockRestore()
     input.destroy()

@@ -1,7 +1,7 @@
 import AVFoundation
 import UIKit
 
-/// Manages AVFoundation camera capture at 30fps, delivering CVPixelBuffer frames via callback.
+/// Manages AVFoundation camera capture at up to 60fps, delivering CVPixelBuffer frames via callback.
 final class CameraManager: NSObject, ObservableObject {
     let session = AVCaptureSession()
 
@@ -68,8 +68,11 @@ final class CameraManager: NSObject, ObservableObject {
         do {
             // Lock for configuration to set frame rate
             try camera.lockForConfiguration()
-            // Target 30fps
-            let targetFPS = CMTimeMake(value: 1, timescale: 30)
+            let maxSupportedFPS = camera.activeFormat.videoSupportedFrameRateRanges
+                .map(\.maxFrameRate)
+                .max() ?? 30
+            let preferredFPS: Int32 = maxSupportedFPS >= 60 ? 60 : 30
+            let targetFPS = CMTimeMake(value: 1, timescale: preferredFPS)
             camera.activeVideoMinFrameDuration = targetFPS
             camera.activeVideoMaxFrameDuration = targetFPS
             // Disable auto-focus hunting (fixed focus is more stable for tracking)

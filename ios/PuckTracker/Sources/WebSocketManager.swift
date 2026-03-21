@@ -37,9 +37,9 @@ final class WebSocketManager: ObservableObject {
 
     // MARK: - Rate Limiting
 
-    /// Throttle sends to prevent flooding. At 30fps camera, we send at most 30Hz.
+    /// Throttle sends to prevent flooding. At 60fps camera, we send at most 60Hz.
     private var lastSendTime: TimeInterval = 0
-    private let minSendInterval: TimeInterval = 1.0 / 33.0  // ~30Hz with slight margin
+    private let minSendInterval: TimeInterval = 1.0 / 66.0  // ~60Hz with slight margin
 
     // MARK: - Init
 

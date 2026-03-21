@@ -2,9 +2,10 @@ import CoreImage
 import UIKit
 import Combine
 
-/// Detects a yellow-green tennis ball by scanning pixel colors directly.
-/// Finds yellow-green pixels (high R, high G, low B), computes their centroid.
-/// Simple, fast, reliable for a bright ball on a dark surface.
+/// Detects a yellow-green tennis ball using HSV color thresholds with ROI tracking.
+/// HSV is much more robust across lighting conditions than raw RGB thresholds.
+/// ROI (region of interest) searches near the last known position first, falling
+/// back to full-frame scan only when the ball moves far or is lost.
 final class BallDetector: ObservableObject {
 
     // MARK: - Published State
@@ -15,18 +16,40 @@ final class BallDetector: ObservableObject {
     /// Callback fired after each frame is processed
     var onPositionUpdate: ((CGPoint, Double) -> Void)?
 
-    // MARK: - Color Thresholds (tunable for yellow-green tennis ball)
-    // Tennis ball in RGB: R ~160-255, G ~180-255, B ~0-100
-    var minR: UInt8 = 120
-    var minG: UInt8 = 140
-    var maxB: UInt8 = 120
-    /// Minimum green-minus-blue gap to reject gray/white pixels
-    var minGBGap: Int = 40
+    // MARK: - HSV Thresholds (tunable for yellow-green tennis ball)
+    // Tennis ball in HSV: H ~35-85°, S >= 0.25, V >= 0.20
+    // These are far more stable across lighting than RGB thresholds.
+    var minHue: Double = 35.0     // degrees (yellow end)
+    var maxHue: Double = 85.0     // degrees (green end)
+    var minSaturation: Double = 0.25
+    var minValue: Double = 0.20
 
-    // MARK: - EMA Smoothing
+    // RGB pre-filter (fast rejection of obviously non-matching pixels)
+    private let preFilterMinG: UInt8 = 80
+    private let preFilterMinRG: UInt8 = 100
 
-    private let emaAlpha: CGFloat = 0.5
-    private var emaPosition: CGPoint?
+    // MARK: - ROI Tracking
+
+    private let gridCols = 16
+    private let gridRows = 16
+    /// Last detected grid cell (for ROI search on next frame)
+    private var lastGX: Int = -1
+    private var lastGY: Int = -1
+    /// ROI search radius in grid cells
+    private let roiRadius = 2
+    /// Consecutive ROI misses before falling back to full scan
+    private var roiMissCount = 0
+    private let roiMissThreshold = 3
+
+    // MARK: - 1-Euro Filter Smoothing
+    // Adapts smoothing dynamically: low cutoff when still (smooth), high when fast (responsive).
+    // Reference: Casiez et al., "1€ Filter", CHI 2012.
+
+    private let oneEuroMinCutoff: Double = 1.0    // Hz — cutoff when stationary (lower = smoother)
+    private let oneEuroBeta: Double = 0.007       // speed coefficient (higher = less lag when moving)
+    private let oneEuroDCutoff: Double = 1.0      // Hz — cutoff for derivative estimation
+    private var filterX: OneEuroFilterState?
+    private var filterY: OneEuroFilterState?
 
     // MARK: - Processing
 
@@ -48,6 +71,48 @@ final class BallDetector: ObservableObject {
         }
     }
 
+    // MARK: - HSV Pixel Matching
+
+    /// Check if an RGB pixel matches the tennis ball color in HSV space.
+    /// Uses a fast RGB pre-filter to reject obviously non-matching pixels.
+    @inline(__always)
+    private func isMatchingPixel(r: UInt8, g: UInt8, b: UInt8) -> Bool {
+        // Fast RGB pre-filter: reject dark or low-green pixels
+        guard g >= preFilterMinG && max(r, g) >= preFilterMinRG else { return false }
+
+        // Convert to HSV using integer-friendly math
+        let ri = Int(r), gi = Int(g), bi = Int(b)
+        let maxC = max(ri, gi, bi)
+        let minC = min(ri, gi, bi)
+        let delta = maxC - minC
+
+        // Value check: maxC/255 >= minValue → maxC >= minValue * 255
+        guard maxC >= Int(minValue * 255.0) else { return false }
+
+        // Saturation check: delta/maxC >= minSaturation → delta * 100 >= maxC * minSat * 100
+        guard maxC > 0 else { return false }
+        guard delta * 100 >= maxC * Int(minSaturation * 100.0) else { return false }
+
+        // Achromatic (delta=0) can't be a colored ball
+        guard delta > 0 else { return false }
+
+        // Hue calculation (in degrees, 0-360)
+        let hue: Double
+        if maxC == ri {
+            let sector = Double(gi - bi) / Double(delta)
+            hue = 60.0 * (sector < 0 ? sector + 6.0 : sector)
+        } else if maxC == gi {
+            hue = 60.0 * (Double(bi - ri) / Double(delta) + 2.0)
+        } else {
+            // Blue max — definitely not a tennis ball
+            return false
+        }
+
+        return hue >= minHue && hue <= maxHue
+    }
+
+    // MARK: - Detection
+
     private func detectBall(in pixelBuffer: CVPixelBuffer) {
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
@@ -62,54 +127,53 @@ final class BallDetector: ObservableObject {
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
         let pixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer)
 
-        // BGRA format (most common from AVFoundation)
         let isBGRA = pixelFormat == kCVPixelFormatType_32BGRA
-
         let buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
         let step = sampleStep
 
-        // Pass 1: Count matching pixels in a coarse grid to find the densest cell
-        let gridCols = 16
-        let gridRows = 16
-        var grid = [[Int]](repeating: [Int](repeating: 0, count: gridCols), count: gridRows)
+        let cellW = width / gridCols
+        let cellH = height / gridRows
 
-        for y in stride(from: 0, to: height, by: step) {
-            let rowOffset = y * bytesPerRow
-            let gy = min(y * gridRows / height, gridRows - 1)
-            for x in stride(from: 0, to: width, by: step) {
-                let pixelOffset = rowOffset + x * 4
+        // ---- ROI Search: try near last known position first ----
+        var bestGX = 0, bestGY = 0, bestCount = 0
+        var totalMatched = 0
+        var usedROI = false
 
-                let r: UInt8
-                let g: UInt8
-                let b: UInt8
+        if lastGX >= 0 && lastGY >= 0 && roiMissCount < roiMissThreshold {
+            let roiResult = scanGridRegion(
+                buffer: buffer, isBGRA: isBGRA,
+                width: width, height: height, bytesPerRow: bytesPerRow, step: step,
+                cellW: cellW, cellH: cellH,
+                gxMin: max(0, lastGX - roiRadius), gxMax: min(gridCols - 1, lastGX + roiRadius),
+                gyMin: max(0, lastGY - roiRadius), gyMax: min(gridRows - 1, lastGY + roiRadius)
+            )
 
-                if isBGRA {
-                    b = buffer[pixelOffset]
-                    g = buffer[pixelOffset + 1]
-                    r = buffer[pixelOffset + 2]
-                } else {
-                    r = buffer[pixelOffset]
-                    g = buffer[pixelOffset + 1]
-                    b = buffer[pixelOffset + 2]
-                }
-
-                if r >= minR && g >= minG && b <= maxB && (Int(g) - Int(b)) >= minGBGap {
-                    let gx = min(x * gridCols / width, gridCols - 1)
-                    grid[gy][gx] += 1
-                }
+            if roiResult.bestCount >= 3 {
+                bestGX = roiResult.bestGX
+                bestGY = roiResult.bestGY
+                bestCount = roiResult.bestCount
+                totalMatched = roiResult.totalMatched
+                usedROI = true
+                roiMissCount = 0
+            } else {
+                roiMissCount += 1
             }
         }
 
-        // Find the grid cell with the most matches
-        var bestGX = 0, bestGY = 0, bestCount = 0
-        for gy in 0..<gridRows {
-            for gx in 0..<gridCols {
-                if grid[gy][gx] > bestCount {
-                    bestCount = grid[gy][gx]
-                    bestGX = gx
-                    bestGY = gy
-                }
-            }
+        // ---- Full Scan: fallback when ROI fails or no prior position ----
+        if !usedROI {
+            let fullResult = scanGridRegion(
+                buffer: buffer, isBGRA: isBGRA,
+                width: width, height: height, bytesPerRow: bytesPerRow, step: step,
+                cellW: cellW, cellH: cellH,
+                gxMin: 0, gxMax: gridCols - 1,
+                gyMin: 0, gyMax: gridRows - 1
+            )
+
+            bestGX = fullResult.bestGX
+            bestGY = fullResult.bestGY
+            bestCount = fullResult.bestCount
+            totalMatched = fullResult.totalMatched
         }
 
         guard bestCount >= 3 else {
@@ -117,27 +181,26 @@ final class BallDetector: ObservableObject {
             return
         }
 
-        // Pass 2: Compute centroid using only pixels near the best cell (+/- 1 cell)
-        let cellW = width / gridCols
-        let cellH = height / gridRows
-        let minX = max(0, (bestGX - 1) * cellW)
-        let maxX = min(width, (bestGX + 2) * cellW)
-        let minY = max(0, (bestGY - 1) * cellH)
-        let maxY = min(height, (bestGY + 2) * cellH)
+        // Store for next frame's ROI
+        lastGX = bestGX
+        lastGY = bestGY
+
+        // ---- Pass 2: Compute centroid in 3×3 neighborhood around best cell ----
+        let regionMinX = max(0, (bestGX - 1) * cellW)
+        let regionMaxX = min(width, (bestGX + 2) * cellW)
+        let regionMinY = max(0, (bestGY - 1) * cellH)
+        let regionMaxY = min(height, (bestGY + 2) * cellH)
 
         var sumX: Double = 0
         var sumY: Double = 0
         var matchCount: Double = 0
 
-        for y in stride(from: minY, to: maxY, by: step) {
+        for y in stride(from: regionMinY, to: regionMaxY, by: step) {
             let rowOffset = y * bytesPerRow
-            for x in stride(from: minX, to: maxX, by: step) {
+            for x in stride(from: regionMinX, to: regionMaxX, by: step) {
                 let pixelOffset = rowOffset + x * 4
 
-                let r: UInt8
-                let g: UInt8
-                let b: UInt8
-
+                let r: UInt8, g: UInt8, b: UInt8
                 if isBGRA {
                     b = buffer[pixelOffset]
                     g = buffer[pixelOffset + 1]
@@ -148,7 +211,7 @@ final class BallDetector: ObservableObject {
                     b = buffer[pixelOffset + 2]
                 }
 
-                if r >= minR && g >= minG && b <= maxB && (Int(g) - Int(b)) >= minGBGap {
+                if isMatchingPixel(r: r, g: g, b: b) {
                     sumX += Double(x)
                     sumY += Double(y)
                     matchCount += 1
@@ -161,35 +224,33 @@ final class BallDetector: ObservableObject {
             return
         }
 
-        // Centroid, normalized to 0.0 - 1.0 in the camera buffer's native portrait space.
+        // Centroid, normalized to 0.0 - 1.0 in the camera buffer's native portrait space
         let centroidX = CGFloat(sumX / matchCount) / CGFloat(width)
         let centroidY = CGFloat(sumY / matchCount) / CGFloat(height)
 
-        // Rotate portrait-buffer coordinates into the app's LandscapeRight screen space.
+        // Rotate portrait-buffer coordinates into the app's LandscapeRight screen space
         let screenX = centroidY
         let screenY = 1.0 - centroidX
 
-        // Total matches across entire grid for confidence
-        let totalGrid = grid.flatMap { $0 }.reduce(0, +)
+        // Confidence stays on the same scale whether we used ROI or full-frame search.
         let totalSampled = Double((width / step) * (height / step))
-        let matchRatio = Double(totalGrid) / totalSampled
+        let matchRatio = Double(totalMatched) / totalSampled
+        let rawConfidence = min(matchRatio / 0.005, 1.0)
 
-        // Confidence based on how many pixels matched (more = more confident).
-        // Use a gentler ramp so smaller, farther balls still clear the classifier's 0.1 floor.
-        let rawConfidence = min(matchRatio / 0.005, 1.0) // 0.5% coverage = full confidence
-
-        // EMA smoothing
-        let rawPoint = CGPoint(x: screenX, y: screenY)
+        // 1-Euro filter smoothing (adapts: smooth when still, responsive when fast)
+        let timestamp = ProcessInfo.processInfo.systemUptime
         let smoothed: CGPoint
-        if let prev = emaPosition {
-            smoothed = CGPoint(
-                x: emaAlpha * rawPoint.x + (1 - emaAlpha) * prev.x,
-                y: emaAlpha * rawPoint.y + (1 - emaAlpha) * prev.y
-            )
+        if filterX != nil, filterY != nil {
+            let sx = filterX!.filter(value: Double(screenX), timestamp: timestamp,
+                                     minCutoff: oneEuroMinCutoff, beta: oneEuroBeta, dCutoff: oneEuroDCutoff)
+            let sy = filterY!.filter(value: Double(screenY), timestamp: timestamp,
+                                     minCutoff: oneEuroMinCutoff, beta: oneEuroBeta, dCutoff: oneEuroDCutoff)
+            smoothed = CGPoint(x: sx, y: sy)
         } else {
-            smoothed = rawPoint
+            filterX = OneEuroFilterState(value: Double(screenX), timestamp: timestamp)
+            filterY = OneEuroFilterState(value: Double(screenY), timestamp: timestamp)
+            smoothed = CGPoint(x: screenX, y: screenY)
         }
-        emaPosition = smoothed
 
         let clampedConfidence = min(max(rawConfidence, 0.0), 1.0)
 
@@ -200,10 +261,83 @@ final class BallDetector: ObservableObject {
         }
     }
 
+    // MARK: - Grid Region Scan
+
+    private struct GridScanResult {
+        let bestGX: Int
+        let bestGY: Int
+        let bestCount: Int
+        let totalMatched: Int
+    }
+
+    /// Scan a rectangular region of grid cells and return the densest cell.
+    private func scanGridRegion(
+        buffer: UnsafePointer<UInt8>, isBGRA: Bool,
+        width: Int, height: Int, bytesPerRow: Int, step: Int,
+        cellW: Int, cellH: Int,
+        gxMin: Int, gxMax: Int, gyMin: Int, gyMax: Int
+    ) -> GridScanResult {
+        let pixelMinX = gxMin * cellW
+        let pixelMaxX = min(width, (gxMax + 1) * cellW)
+        let pixelMinY = gyMin * cellH
+        let pixelMaxY = min(height, (gyMax + 1) * cellH)
+
+        // Count matches per grid cell
+        let regionCols = gxMax - gxMin + 1
+        let regionRows = gyMax - gyMin + 1
+        var cellCounts = [Int](repeating: 0, count: regionCols * regionRows)
+        var total = 0
+
+        for y in stride(from: pixelMinY, to: pixelMaxY, by: step) {
+            let rowOffset = y * bytesPerRow
+            let gy = min((y - pixelMinY) * regionRows / max(pixelMaxY - pixelMinY, 1), regionRows - 1)
+
+            for x in stride(from: pixelMinX, to: pixelMaxX, by: step) {
+                let pixelOffset = rowOffset + x * 4
+
+                let r: UInt8, g: UInt8, b: UInt8
+                if isBGRA {
+                    b = buffer[pixelOffset]
+                    g = buffer[pixelOffset + 1]
+                    r = buffer[pixelOffset + 2]
+                } else {
+                    r = buffer[pixelOffset]
+                    g = buffer[pixelOffset + 1]
+                    b = buffer[pixelOffset + 2]
+                }
+
+                if isMatchingPixel(r: r, g: g, b: b) {
+                    let gx = min((x - pixelMinX) * regionCols / max(pixelMaxX - pixelMinX, 1), regionCols - 1)
+                    cellCounts[gy * regionCols + gx] += 1
+                    total += 1
+                }
+            }
+        }
+
+        // Find densest cell
+        var bestIdx = 0, bestCount = 0
+        for i in 0..<cellCounts.count {
+            if cellCounts[i] > bestCount {
+                bestCount = cellCounts[i]
+                bestIdx = i
+            }
+        }
+
+        let localGY = bestIdx / regionCols
+        let localGX = bestIdx % regionCols
+
+        return GridScanResult(
+            bestGX: gxMin + localGX,
+            bestGY: gyMin + localGY,
+            bestCount: bestCount,
+            totalMatched: total
+        )
+    }
+
     // MARK: - Ball Lost
 
     private func publishBallLost() {
-        emaPosition = nil
+        resetSmoothing()
 
         DispatchQueue.main.async { [weak self] in
             self?.confidence = 0.0
@@ -212,6 +346,51 @@ final class BallDetector: ObservableObject {
     }
 
     func resetSmoothing() {
-        emaPosition = nil
+        filterX = nil
+        filterY = nil
+        lastGX = -1
+        lastGY = -1
+        roiMissCount = 0
+    }
+}
+
+// MARK: - 1-Euro Filter
+
+/// Minimal single-axis 1-Euro filter state.
+/// Implements the algorithm from Casiez et al., CHI 2012.
+struct OneEuroFilterState {
+    private var prevValue: Double
+    private var prevDerivative: Double
+    private var prevTimestamp: Double
+
+    init(value: Double, timestamp: Double) {
+        self.prevValue = value
+        self.prevDerivative = 0.0
+        self.prevTimestamp = timestamp
+    }
+
+    mutating func filter(value: Double, timestamp: Double,
+                         minCutoff: Double, beta: Double, dCutoff: Double) -> Double {
+        let dt = max(timestamp - prevTimestamp, 1e-6)
+        prevTimestamp = timestamp
+
+        // Estimate derivative with low-pass filter
+        let rawDerivative = (value - prevValue) / dt
+        let alphaD = smoothingFactor(dt: dt, cutoff: dCutoff)
+        let derivative = alphaD * rawDerivative + (1 - alphaD) * prevDerivative
+        prevDerivative = derivative
+
+        // Adaptive cutoff: increase cutoff (= less smoothing) when speed is high
+        let cutoff = minCutoff + beta * abs(derivative)
+        let alpha = smoothingFactor(dt: dt, cutoff: cutoff)
+
+        let filtered = alpha * value + (1 - alpha) * prevValue
+        prevValue = filtered
+        return filtered
+    }
+
+    private func smoothingFactor(dt: Double, cutoff: Double) -> Double {
+        let tau = 1.0 / (2.0 * .pi * cutoff)
+        return 1.0 / (1.0 + tau / dt)
     }
 }
