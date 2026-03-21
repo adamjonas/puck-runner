@@ -2,17 +2,17 @@
 
 Puck Runner is a local multiplayer setup built from two pieces:
 
-- a browser game in [`game/`](/Users/jonas/code/puck-runner/game)
-- an iPhone tracker app in [`ios/PuckTracker/`](/Users/jonas/code/puck-runner/ios/PuckTracker)
+- a browser game in [`game/`](./game)
+- an iPhone tracker app in [`ios/PuckTracker/`](./ios/PuckTracker)
 
-The phone tracks ball position from the camera feed, classifies lane/deke/stickhandling input, and streams it over WebSocket to the game. Shared protocol and threshold configuration live in [`shared/`](/Users/jonas/code/puck-runner/shared).
+The phone tracks ball position from the camera feed, classifies lane/deke/stickhandling input, and streams it over WebSocket to the game. Shared protocol and threshold configuration live in [`shared/`](./shared).
 
 ## Repo Layout
 
-- [`game/`](/Users/jonas/code/puck-runner/game): Vite + TypeScript game client, local relay server, tests
-- [`ios/PuckTracker/`](/Users/jonas/code/puck-runner/ios/PuckTracker): SwiftUI tracker app
-- [`shared/protocol.ts`](/Users/jonas/code/puck-runner/shared/protocol.ts): shared message types and endpoint constants
-- [`shared/tracker-config.json`](/Users/jonas/code/puck-runner/shared/tracker-config.json): shared tracker thresholds and WebSocket config
+- [`game/`](./game): Vite + TypeScript game client, local relay server, tests
+- [`ios/PuckTracker/`](./ios/PuckTracker): SwiftUI tracker app
+- [`shared/protocol.ts`](./shared/protocol.ts): shared message types and endpoint constants
+- [`shared/tracker-config.json`](./shared/tracker-config.json): shared tracker thresholds and WebSocket config
 
 ## Requirements
 
@@ -50,7 +50,7 @@ npm run generate:shared-config
 
 ## iPhone Tracker Setup
 
-Open [`ios/PuckTracker/PuckTracker.xcodeproj`](/Users/jonas/code/puck-runner/ios/PuckTracker/PuckTracker.xcodeproj) in Xcode.
+Open [`ios/PuckTracker/PuckTracker.xcodeproj`](./ios/PuckTracker/PuckTracker.xcodeproj) in Xcode.
 
 Before running on a device:
 
@@ -63,7 +63,7 @@ The app’s settings screen lets you enter the host running the Vite server. Tha
 
 ## Shared Config
 
-The game and tracker share lane boundaries, deke thresholds, WebSocket paths, and message type constants through [`shared/tracker-config.json`](/Users/jonas/code/puck-runner/shared/tracker-config.json).
+The game and tracker share lane boundaries, deke thresholds, WebSocket paths, and message type constants through [`shared/tracker-config.json`](./shared/tracker-config.json).
 
 When that config changes, regenerate the Swift mirror:
 
@@ -72,10 +72,10 @@ cd game
 npm run generate:shared-config
 ```
 
-This updates [`SharedTrackerConfig.swift`](/Users/jonas/code/puck-runner/ios/PuckTracker/Sources/SharedTrackerConfig.swift).
+This updates [`SharedTrackerConfig.swift`](./ios/PuckTracker/Sources/SharedTrackerConfig.swift).
 
 ## Notes
 
 - The browser game requires WebGL.
-- Swift/Xcode module caches are ignored in git via [`.gitignore`](/Users/jonas/code/puck-runner/.gitignore).
-- This repo currently has no root Node workspace; run npm commands from [`game/`](/Users/jonas/code/puck-runner/game).
+- Swift/Xcode module caches are ignored in git via [`.gitignore`](./.gitignore).
+- This repo currently has no root Node workspace; run npm commands from [`game/`](./game).

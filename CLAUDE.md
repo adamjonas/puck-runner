@@ -14,7 +14,7 @@ Single Vite process serves the game AND relays WebSocket messages between iPhone
 ## Project Structure
 
 - `shared/` — Shared TypeScript protocol types (single source of truth for WS messages)
-- `game/` — Vite + TypeScript browser game (Canvas 2D for Phase 1, Three.js later)
+- `game/` — Vite + TypeScript browser game (Three.js WebGL renderer)
 - `ios/PuckTracker/` — Swift/SwiftUI iPhone tracker app
 
 ## Development
@@ -36,9 +36,12 @@ To regenerate the Xcode project: `cd ios/PuckTracker && xcodegen generate`
 - TypeScript + Vite + Vitest for game
 - WS relay as Vite plugin (one process)
 - Central GameState class (all mutable state)
-- Input interpolation (30Hz→60fps lerp)
+- Input pipeline: 60fps capture → 1-Euro filter (iOS) → Kalman prediction (game) → adaptive confidence gating
 - Object pooling for obstacles/coins (Phase 2+)
 - Auto-reconnect with exponential backoff on WS disconnect
 - Ball-lost: 1s grace period, then freeze with overlay
 - Lane transition: 200ms invincibility
+- HSV color detection + ROI tracking (iOS BallDetector)
+- Peak/trough stickhandling detection (iOS PositionClassifier)
+- Optional jitter buffer for network smoothing (disabled by default)
 - iOS: free dev account (re-sign weekly)
