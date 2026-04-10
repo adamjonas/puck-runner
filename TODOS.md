@@ -24,6 +24,14 @@
 
 - [ ] **Accessibility (ARIA + focus management)** — Add ARIA labels to overlay elements, manage focus for profile selector keyboard nav, ensure all interactive elements have visible focus indicators. Effort: S (CC: ~10 min). Depends on: Nothing.
 
+### Game modes & scoring ideas
+
+- [ ] **Stickhandling challenge mode** — 30-second timed challenge: stickhandle as fast as possible, each direction change = 1 stickhandle, counted on iOS and sent directly. Standalone mode with overlay-only pad visual (no 3D rink), per-profile leaderboard on profile cards, and a lightweight GameMode abstraction for future modes. Reviewed through CEO review, eng review, and two Codex adversarial passes. **[Full implementation plan →](docs/plans/stickhandling-challenge-mode.md)** Effort: M (human: ~4 days) → CC: M (~30 min). Depends on: PositionClassifier peak/trough detection working reliably.
+
+- [ ] **Shootout mode** — Standalone mode focused on dangling a goalie for points. Player controls the puck to fake out a goalie character and score. Depends on: Core game engine, goalie AI/animation.
+
+- [ ] **Multi-lane switch bonus** — Award extra points for skipping lanes (e.g., jumping from lane 1 to lane 3) rather than moving one lane at a time. Rewards bold, decisive moves. Depends on: Lane detection and scoring system.
+
 ### P3 — Polish / Nice-to-have
 
 - [ ] **Coach heatmap** — Post-game visualization on iPhone showing where the player moved the puck on the surface during the run. Helps kids see movement patterns and improve stick control. Accumulate position samples during gameplay, render as a heatmap overlay on the calibrated surface view. Effort: S (human: ~4 hours) → CC: S (~10 min). Depends on: Phase 2 position data accumulation.
